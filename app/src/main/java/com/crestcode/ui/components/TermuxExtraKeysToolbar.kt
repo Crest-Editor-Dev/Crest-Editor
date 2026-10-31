@@ -1,107 +1,143 @@
 package com.crestcode.ui.components
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+// Termux Signature Colors
+private val TermuxToolbarBg = Color(0xFF000000)
+private val TermuxDividerColor = Color(0xFF1E1E1E)
+private val TermuxKeyActiveBg = Color(0xFF333333)
+private val TermuxKeyTextActive = Color(0xFFEF5350) // Termux red_400
+private val TermuxKeyTextDefault = Color(0xFFFFFFFF)
+
+/**
+ * Exact Termux-style 2-row extra keys toolbar.
+ * Flat edge-to-edge black slab, 7 equal-width columns per row, zero floating buttons.
+ */
 @Composable
 fun TermuxExtraKeysToolbar(
     isCtrlActive: Boolean,
     isAltActive: Boolean,
     onToggleCtrl: () -> Unit,
     onToggleAlt: () -> Unit,
-    onToggleKeyboard: () -> Unit,
+    onToggleKeyboard: () -> Unit = {},
     onKeyClick: (String) -> Unit
 ) {
-    val scrollState1 = rememberScrollState()
-    val scrollState2 = rememberScrollState()
-
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 4.dp,
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(TermuxToolbarBg)
     ) {
-        Column(
+        // Subtle top border divider
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp, horizontal = 2.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            // Row 1: ESC, ⌨, HOME, ↑, END, PGUP
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(scrollState1)
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                TermuxKeyButton(label = "ESC", isActive = false, onClick = { onKeyClick("\u001b") })
-                TermuxKeyButton(label = "⌨", isActive = false, onClick = onToggleKeyboard)
-                TermuxKeyButton(label = "HOME", isActive = false, onClick = { onKeyClick("\u001b[1~") })
-                TermuxKeyButton(label = "↑", isActive = false, onClick = { onKeyClick("\u001b[A") })
-                TermuxKeyButton(label = "END", isActive = false, onClick = { onKeyClick("\u001b[4~") })
-                TermuxKeyButton(label = "PGUP", isActive = false, onClick = { onKeyClick("\u001b[5~") })
-            }
+                .height(0.5.dp)
+                .background(TermuxDividerColor)
+        )
 
-            // Row 2: TAB, CTRL, ALT, ←, ↓, →, PGDN
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(scrollState2)
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                TermuxKeyButton(label = "TAB", isActive = false, onClick = { onKeyClick("\t") })
-                TermuxKeyButton(label = "CTRL", isActive = isCtrlActive, onClick = onToggleCtrl)
-                TermuxKeyButton(label = "ALT", isActive = isAltActive, onClick = onToggleAlt)
-                TermuxKeyButton(label = "←", isActive = false, onClick = { onKeyClick("\u001b[D") })
-                TermuxKeyButton(label = "↓", isActive = false, onClick = { onKeyClick("\u001b[B") })
-                TermuxKeyButton(label = "→", isActive = false, onClick = { onKeyClick("\u001b[C") })
-                TermuxKeyButton(label = "PGDN", isActive = false, onClick = { onKeyClick("\u001b[6~") })
-            }
+        // Row 1 (7 keys): ESC, { }, = +, HOME, ↑, END, PGUP
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TermuxKeyCell(label = "ESC", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b") })
+            TermuxDivider()
+            TermuxKeyCell(label = "{ }", modifier = Modifier.weight(1f), onClick = { onKeyClick("{}") })
+            TermuxDivider()
+            TermuxKeyCell(label = "= +", modifier = Modifier.weight(1f), onClick = { onKeyClick("=") })
+            TermuxDivider()
+            TermuxKeyCell(label = "HOME", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[1~") })
+            TermuxDivider()
+            TermuxKeyCell(label = "↑", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[A") })
+            TermuxDivider()
+            TermuxKeyCell(label = "END", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[4~") })
+            TermuxDivider()
+            TermuxKeyCell(label = "PGUP", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[5~") })
+        }
+
+        // Horizontal divider between Row 1 and Row 2
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(0.5.dp)
+                .background(TermuxDividerColor)
+        )
+
+        // Row 2 (7 keys): TAB, CTRL, ALT, ←, ↓, →, PGDN
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TermuxKeyCell(label = "TAB", modifier = Modifier.weight(1f), onClick = { onKeyClick("\t") })
+            TermuxDivider()
+            TermuxKeyCell(label = "CTRL", isActive = isCtrlActive, modifier = Modifier.weight(1f), onClick = onToggleCtrl)
+            TermuxDivider()
+            TermuxKeyCell(label = "ALT", isActive = isAltActive, modifier = Modifier.weight(1f), onClick = onToggleAlt)
+            TermuxDivider()
+            TermuxKeyCell(label = "←", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[D") })
+            TermuxDivider()
+            TermuxKeyCell(label = "↓", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[B") })
+            TermuxDivider()
+            TermuxKeyCell(label = "→", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[C") })
+            TermuxDivider()
+            TermuxKeyCell(label = "PGDN", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[6~") })
         }
     }
 }
 
+/**
+ * Single flat key cell matching Termux ExtraKeysView button.
+ */
 @Composable
-fun TermuxKeyButton(
+private fun TermuxKeyCell(
     label: String,
-    isActive: Boolean,
+    modifier: Modifier = Modifier,
+    isActive: Boolean = false,
     onClick: () -> Unit
 ) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(6.dp),
-        color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-        contentColor = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-        tonalElevation = if (isActive) 8.dp else 2.dp,
-        border = BorderStroke(
-            1.dp,
-            if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-        ),
-        modifier = Modifier.height(34.dp)
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .background(if (isActive) TermuxKeyActiveBg else Color.Transparent, RectangleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                letterSpacing = 0.5.sp
-            )
-        }
+        Text(
+            text = label,
+            color = if (isActive) TermuxKeyTextActive else TermuxKeyTextDefault,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1
+        )
     }
+}
+
+/**
+ * Hairline divider between keys.
+ */
+@Composable
+private fun TermuxDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(0.5.dp)
+            .background(TermuxDividerColor)
+    )
 }
