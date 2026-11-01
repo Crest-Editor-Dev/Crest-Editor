@@ -14,6 +14,12 @@ object TerminalSessionManager {
     var activeClient: NativeTerminalClient? = null
         private set
 
+    var onModifiersChanged: ((ctrl: Boolean, alt: Boolean) -> Unit)? = null
+        set(value) {
+            field = value
+            activeClient?.onModifiersChanged = value
+        }
+
     private var isInitializing = false
 
     fun getOrCreateSession(
@@ -48,7 +54,9 @@ object TerminalSessionManager {
                 if (ready) {
                     val client = NativeTerminalClient(context, onSessionFinishedCallback = {
                         onStatusUpdate("Alpine Process Terminated")
-                    })
+                    }).apply {
+                        onModifiersChanged = this@TerminalSessionManager.onModifiersChanged
+                    }
                     val session = alpineManager.createAlpineTerminalSession(client, initialPath)
 
                     activeClient = client

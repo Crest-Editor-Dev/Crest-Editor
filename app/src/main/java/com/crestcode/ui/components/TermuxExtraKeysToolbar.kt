@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -28,14 +29,19 @@ private val TermuxKeyTextDefault = Color(0xFFFFFFFF)
 
 /**
  * Exact Termux-style 2-row extra keys toolbar.
- * Flat edge-to-edge black slab, 7 equal-width columns per row, auto-repeat on hold for arrows/nav keys.
+ * Flat edge-to-edge black slab, 7 equal-width columns per row, auto-repeat on hold for arrows/nav keys,
+ * and tap-to-activate / long-press-to-lock for CTRL & ALT keys.
  */
 @Composable
 fun TermuxExtraKeysToolbar(
     isCtrlActive: Boolean,
+    isCtrlLocked: Boolean = false,
     isAltActive: Boolean,
+    isAltLocked: Boolean = false,
     onToggleCtrl: () -> Unit,
+    onLockCtrl: () -> Unit = {},
     onToggleAlt: () -> Unit,
+    onLockAlt: () -> Unit = {},
     onToggleKeyboard: () -> Unit = {},
     onKeyClick: (String) -> Unit
 ) {
@@ -91,9 +97,23 @@ fun TermuxExtraKeysToolbar(
         ) {
             TermuxKeyCell(label = "TAB", modifier = Modifier.weight(1f), onClick = { onKeyClick("\t") })
             TermuxDivider()
-            TermuxKeyCell(label = "CTRL", isActive = isCtrlActive, modifier = Modifier.weight(1f), onClick = onToggleCtrl)
+            TermuxKeyCell(
+                label = "CTRL",
+                isActive = isCtrlActive,
+                isLocked = isCtrlLocked,
+                modifier = Modifier.weight(1f),
+                onClick = onToggleCtrl,
+                onLongClick = onLockCtrl
+            )
             TermuxDivider()
-            TermuxKeyCell(label = "ALT", isActive = isAltActive, modifier = Modifier.weight(1f), onClick = onToggleAlt)
+            TermuxKeyCell(
+                label = "ALT",
+                isActive = isAltActive,
+                isLocked = isAltLocked,
+                modifier = Modifier.weight(1f),
+                onClick = onToggleAlt,
+                onLongClick = onLockAlt
+            )
             TermuxDivider()
             TermuxKeyCell(label = "←", isRepeatable = true, modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[D") })
             TermuxDivider()
@@ -108,18 +128,21 @@ fun TermuxExtraKeysToolbar(
 
 /**
  * Single flat key cell matching Termux ExtraKeysView button.
- * Supports auto-repeat on hold (Termux repetitive keys behavior: 400ms timeout + 80ms repeat delay).
+ * Supports auto-repeat on hold for navigation keys, and tap / long-press lock for modifier keys.
  */
 @Composable
 private fun TermuxKeyCell(
     label: String,
     modifier: Modifier = Modifier,
     isActive: Boolean = false,
+    isLocked: Boolean = false,
     isRepeatable: Boolean = false,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
     val isArrow = label in listOf("↑", "↓", "←", "→")
     val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongClick by rememberUpdatedState(onLongClick)
     var isPressed by remember { mutableStateOf(false) }
 
     // Auto-repeat on hold (Termux DEFAULT_LONG_PRESS_REPEAT_DELAY = 80ms)
@@ -134,36 +157,60 @@ private fun TermuxKeyCell(
         }
     }
 
-    val cellModifier = if (isRepeatable) {
-        modifier
-            .fillMaxHeight()
-            .background(
-                if (isActive) TermuxKeyActiveBg
-                else if (isPressed) TermuxKeyPressedBg
-                else Color.Transparent,
-                RectangleShape
-            )
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    isPressed = true
-                    try {
-                        do {
-                            val event = awaitPointerEvent()
-                        } while (event.changes.any { it.pressed })
-                    } finally {
-                        isPressed = false
+    val cellModifier = when {
+        isRepeatable -> {
+            modifier
+                .fillMaxHeight()
+                .background(
+                    if (isActive) TermuxKeyActiveBg
+                    else if (isPressed) TermuxKeyPressedBg
+                    else Color.Transparent,
+                    RectangleShape
+                )
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        isPressed = true
+                        try {
+                            do {
+                                val event = awaitPointerEvent()
+                            } while (event.changes.any { it.pressed })
+                        } finally {
+                            isPressed = false
+                        }
                     }
                 }
-            }
-    } else {
-        modifier
-            .fillMaxHeight()
-            .background(
-                if (isActive) TermuxKeyActiveBg else Color.Transparent,
-                RectangleShape
-            )
-            .clickable(onClick = onClick)
+        }
+        onLongClick != null -> {
+            modifier
+                .fillMaxHeight()
+                .background(
+                    if (isActive) TermuxKeyActiveBg
+                    else if (isPressed) TermuxKeyPressedBg
+                    else Color.Transparent,
+                    RectangleShape
+                )
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            isPressed = true
+                            tryAwaitRelease()
+                            isPressed = false
+                        },
+                        onTap = { currentOnClick() },
+                        onLongPress = { currentOnLongClick?.invoke() }
+                    )
+                }
+        }
+        else -> {
+            modifier
+                .fillMaxHeight()
+                .background(
+                    if (isActive) TermuxKeyActiveBg else Color.Transparent,
+                    RectangleShape
+                )
+                .clickable(onClick = onClick)
+        }
     }
 
     Box(
@@ -178,6 +225,17 @@ private fun TermuxKeyCell(
             fontWeight = if (isArrow || isActive) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1
         )
+
+        // Termux-style locked indicator: crisp accent bar at bottom
+        if (isLocked) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.5.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(TermuxKeyTextActive)
+            )
+        }
     }
 }
 

@@ -66,7 +66,21 @@ class MainActivity : ComponentActivity() {
                 val showSettings by viewModel.showSettings.collectAsState()
 
                 var isCtrlActive by remember { mutableStateOf(false) }
+                var isCtrlLocked by remember { mutableStateOf(false) }
                 var isAltActive by remember { mutableStateOf(false) }
+                var isAltLocked by remember { mutableStateOf(false) }
+
+                DisposableEffect(Unit) {
+                    TerminalSessionManager.onModifiersChanged = { ctrl, alt ->
+                        isCtrlActive = ctrl
+                        isAltActive = alt
+                        if (!ctrl) isCtrlLocked = false
+                        if (!alt) isAltLocked = false
+                    }
+                    onDispose {
+                        TerminalSessionManager.onModifiersChanged = null
+                    }
+                }
 
                 val showCreateDialog by viewModel.showCreateDialog.collectAsState()
                 val isFolderCreation by viewModel.isFolderCreation.collectAsState()
@@ -263,14 +277,42 @@ class MainActivity : ComponentActivity() {
                             Column {
                                 TermuxExtraKeysToolbar(
                                     isCtrlActive = isCtrlActive,
+                                    isCtrlLocked = isCtrlLocked,
                                     isAltActive = isAltActive,
+                                    isAltLocked = isAltLocked,
                                     onToggleCtrl = {
-                                        isCtrlActive = !isCtrlActive
+                                        if (isCtrlActive) {
+                                            isCtrlActive = false
+                                            isCtrlLocked = false
+                                        } else {
+                                            isCtrlActive = true
+                                            isCtrlLocked = false
+                                        }
                                         TerminalSessionManager.activeClient?.isCtrlActive = isCtrlActive
+                                        TerminalSessionManager.activeClient?.isCtrlLocked = isCtrlLocked
+                                    },
+                                    onLockCtrl = {
+                                        isCtrlActive = true
+                                        isCtrlLocked = true
+                                        TerminalSessionManager.activeClient?.isCtrlActive = true
+                                        TerminalSessionManager.activeClient?.isCtrlLocked = true
                                     },
                                     onToggleAlt = {
-                                        isAltActive = !isAltActive
+                                        if (isAltActive) {
+                                            isAltActive = false
+                                            isAltLocked = false
+                                        } else {
+                                            isAltActive = true
+                                            isAltLocked = false
+                                        }
                                         TerminalSessionManager.activeClient?.isAltActive = isAltActive
+                                        TerminalSessionManager.activeClient?.isAltLocked = isAltLocked
+                                    },
+                                    onLockAlt = {
+                                        isAltActive = true
+                                        isAltLocked = true
+                                        TerminalSessionManager.activeClient?.isAltActive = true
+                                        TerminalSessionManager.activeClient?.isAltLocked = true
                                     },
                                     onToggleKeyboard = {
                                         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
@@ -303,6 +345,15 @@ class MainActivity : ComponentActivity() {
                                                 "\u001b[D" -> MonacoBridge.handleKey(webView, "LEFT")
                                                 else -> MonacoBridge.typeText(webView, key)
                                             }
+                                        }
+                                        // Deactivate single-tap (non-locked) modifiers after key action
+                                        if (isCtrlActive && !isCtrlLocked) {
+                                            isCtrlActive = false
+                                            TerminalSessionManager.activeClient?.isCtrlActive = false
+                                        }
+                                        if (isAltActive && !isAltLocked) {
+                                            isAltActive = false
+                                            TerminalSessionManager.activeClient?.isAltActive = false
                                         }
                                     }
                                 )

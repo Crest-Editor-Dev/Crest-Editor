@@ -112,17 +112,26 @@ open class NativeTerminalClient(
     override fun onLongPress(event: MotionEvent): Boolean = false
 
     var isCtrlActive: Boolean = false
+    var isCtrlLocked: Boolean = false
     var isAltActive: Boolean = false
+    var isAltLocked: Boolean = false
+    var onModifiersChanged: ((ctrl: Boolean, alt: Boolean) -> Unit)? = null
 
     override fun readControlKey(): Boolean {
         val ctrl = isCtrlActive
-        if (ctrl) isCtrlActive = false
+        if (ctrl && !isCtrlLocked) {
+            isCtrlActive = false
+            onModifiersChanged?.invoke(false, isAltActive)
+        }
         return ctrl
     }
 
     override fun readAltKey(): Boolean {
         val alt = isAltActive
-        if (alt) isAltActive = false
+        if (alt && !isAltLocked) {
+            isAltActive = false
+            onModifiersChanged?.invoke(isCtrlActive, false)
+        }
         return alt
     }
 
