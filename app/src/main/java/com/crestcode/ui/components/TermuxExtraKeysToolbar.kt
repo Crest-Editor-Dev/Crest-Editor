@@ -2,28 +2,33 @@ package com.crestcode.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 // Termux Signature Colors
 private val TermuxToolbarBg = Color(0xFF000000)
 private val TermuxDividerColor = Color(0xFF1E1E1E)
 private val TermuxKeyActiveBg = Color(0xFF333333)
+private val TermuxKeyPressedBg = Color(0xFF282828)
 private val TermuxKeyTextActive = Color(0xFFEF5350) // Termux red_400
 private val TermuxKeyTextDefault = Color(0xFFFFFFFF)
 
 /**
  * Exact Termux-style 2-row extra keys toolbar.
- * Flat edge-to-edge black slab, 7 equal-width columns per row, zero floating buttons.
+ * Flat edge-to-edge black slab, 7 equal-width columns per row, auto-repeat on hold for arrows/nav keys.
  */
 @Composable
 fun TermuxExtraKeysToolbar(
@@ -62,11 +67,11 @@ fun TermuxExtraKeysToolbar(
             TermuxDivider()
             TermuxKeyCell(label = "HOME", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[1~") })
             TermuxDivider()
-            TermuxKeyCell(label = "↑", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[A") })
+            TermuxKeyCell(label = "↑", isRepeatable = true, modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[A") })
             TermuxDivider()
             TermuxKeyCell(label = "END", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[4~") })
             TermuxDivider()
-            TermuxKeyCell(label = "PGUP", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[5~") })
+            TermuxKeyCell(label = "PGUP", isRepeatable = true, modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[5~") })
         }
 
         // Horizontal divider between Row 1 and Row 2
@@ -90,34 +95,79 @@ fun TermuxExtraKeysToolbar(
             TermuxDivider()
             TermuxKeyCell(label = "ALT", isActive = isAltActive, modifier = Modifier.weight(1f), onClick = onToggleAlt)
             TermuxDivider()
-            TermuxKeyCell(label = "←", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[D") })
+            TermuxKeyCell(label = "←", isRepeatable = true, modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[D") })
             TermuxDivider()
-            TermuxKeyCell(label = "↓", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[B") })
+            TermuxKeyCell(label = "↓", isRepeatable = true, modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[B") })
             TermuxDivider()
-            TermuxKeyCell(label = "→", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[C") })
+            TermuxKeyCell(label = "→", isRepeatable = true, modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[C") })
             TermuxDivider()
-            TermuxKeyCell(label = "PGDN", modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[6~") })
+            TermuxKeyCell(label = "PGDN", isRepeatable = true, modifier = Modifier.weight(1f), onClick = { onKeyClick("\u001b[6~") })
         }
     }
 }
 
 /**
  * Single flat key cell matching Termux ExtraKeysView button.
+ * Supports auto-repeat on hold (Termux repetitive keys behavior: 400ms timeout + 80ms repeat delay).
  */
 @Composable
 private fun TermuxKeyCell(
     label: String,
     modifier: Modifier = Modifier,
     isActive: Boolean = false,
+    isRepeatable: Boolean = false,
     onClick: () -> Unit
 ) {
     val isArrow = label in listOf("↑", "↓", "←", "→")
+    val currentOnClick by rememberUpdatedState(onClick)
+    var isPressed by remember { mutableStateOf(false) }
+
+    // Auto-repeat on hold (Termux DEFAULT_LONG_PRESS_REPEAT_DELAY = 80ms)
+    LaunchedEffect(isPressed) {
+        if (isPressed && isRepeatable) {
+            currentOnClick()
+            delay(400) // ViewConfiguration.getLongPressTimeout()
+            while (isPressed) {
+                currentOnClick()
+                delay(80) // Termux repeat delay
+            }
+        }
+    }
+
+    val cellModifier = if (isRepeatable) {
+        modifier
+            .fillMaxHeight()
+            .background(
+                if (isActive) TermuxKeyActiveBg
+                else if (isPressed) TermuxKeyPressedBg
+                else Color.Transparent,
+                RectangleShape
+            )
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    isPressed = true
+                    try {
+                        do {
+                            val event = awaitPointerEvent()
+                        } while (event.changes.any { it.pressed })
+                    } finally {
+                        isPressed = false
+                    }
+                }
+            }
+    } else {
+        modifier
+            .fillMaxHeight()
+            .background(
+                if (isActive) TermuxKeyActiveBg else Color.Transparent,
+                RectangleShape
+            )
+            .clickable(onClick = onClick)
+    }
 
     Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .background(if (isActive) TermuxKeyActiveBg else Color.Transparent, RectangleShape)
-            .clickable(onClick = onClick),
+        modifier = cellModifier,
         contentAlignment = Alignment.Center
     ) {
         Text(
