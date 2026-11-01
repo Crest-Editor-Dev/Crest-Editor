@@ -35,9 +35,9 @@ if ! grep -q 'crest-editor-dev.github.io/Crest-Packages' /etc/apk/repositories; 
     echo 'https://crest-editor-dev.github.io/Crest-Packages' >> /etc/apk/repositories
 fi
 
-echo "[4/4] Updating APK indexes & installing Bash, CPM, and CHSH..."
+echo "[4/4] Updating APK indexes & installing Bash, CPM, CHSH, and JQ..."
 apk update || true
-apk add bash cpm chsh || true
+apk add bash cpm chsh jq || true
 
 echo
 echo "=========================================="

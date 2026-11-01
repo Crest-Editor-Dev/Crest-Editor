@@ -82,6 +82,11 @@ fun SettingsScreen(
     val focusManager = LocalFocusManager.current
     BackHandler { onClose() }
 
+    // Auto-reload settings from disk when screen is opened
+    LaunchedEffect(Unit) {
+        settingsManager.reload()
+    }
+
     // State observation from SettingsManager
     val settingsState by settingsManager.settingsState.collectAsState()
 

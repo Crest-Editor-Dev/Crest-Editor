@@ -202,10 +202,17 @@ class SettingsManager(private val context: Context) {
     }
 
     /**
+     * Reloads settings from disk into StateFlow.
+     */
+    fun reload() {
+        loadSettings()
+    }
+
+    /**
      * Loads settings from settings.json or initializes defaults.
      */
     @Synchronized
-    private fun loadSettings() {
+    fun loadSettings() {
         val map = mutableMapOf<String, Any>()
 
         // 1. Fill defaults first

@@ -141,13 +141,28 @@ resolve_shell_path() {
     return 1
 }
 
+# Locate settings.json (Single Source of Truth)
+SETTINGS_FILE=""
+if [ -n "$PREFIX" ] && [ -f "$PREFIX/settings.json" ]; then
+    SETTINGS_FILE="$PREFIX/settings.json"
+elif [ -f "/data/data/com.cresteditor/files/settings.json" ]; then
+    SETTINGS_FILE="/data/data/com.cresteditor/files/settings.json"
+fi
+
 CANDIDATE_SHELL=""
 
 if [ -n "$PREFERRED_SHELL" ]; then
     CANDIDATE_SHELL="$PREFERRED_SHELL"
-elif [ -f "$HOME/.config/crest/shell" ]; then
-    CANDIDATE_SHELL="$(head -n 1 "$HOME/.config/crest/shell" 2>/dev/null | tr -d '[:space:]')"
+elif [ -n "$SETTINGS_FILE" ] && [ -f "$SETTINGS_FILE" ]; then
+    if command -v jq >/dev/null 2>&1; then
+        CANDIDATE_SHELL="$(jq -r '.["terminal.integrated.shell"] // empty' "$SETTINGS_FILE" 2>/dev/null || true)"
+    else
+        CANDIDATE_SHELL="$(grep '"terminal.integrated.shell"' "$SETTINGS_FILE" 2>/dev/null | head -n 1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/' || true)"
+    fi
 fi
+
+# Clean up legacy config file if present
+rm -f "$HOME/.config/crest/shell" 2>/dev/null || true
 
 TARGET_SHELL=""
 
