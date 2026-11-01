@@ -111,6 +111,8 @@ private fun TermuxKeyCell(
     isActive: Boolean = false,
     onClick: () -> Unit
 ) {
+    val isArrow = label in listOf("↑", "↓", "←", "→")
+
     Box(
         modifier = modifier
             .fillMaxHeight()
@@ -121,9 +123,9 @@ private fun TermuxKeyCell(
         Text(
             text = label,
             color = if (isActive) TermuxKeyTextActive else TermuxKeyTextDefault,
-            fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+            fontSize = if (isArrow) 16.sp else 12.sp,
+            fontFamily = if (isArrow) FontFamily.Default else FontFamily.Monospace,
+            fontWeight = if (isArrow || isActive) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1
         )
     }
