@@ -220,9 +220,10 @@ private fun TermuxKeyCell(
         Text(
             text = label,
             color = if (isActive) TermuxKeyTextActive else TermuxKeyTextDefault,
-            fontSize = if (isArrow) 16.sp else 12.sp,
-            fontFamily = if (isArrow) FontFamily.Default else FontFamily.Monospace,
-            fontWeight = if (isArrow || isActive) FontWeight.Bold else FontWeight.Medium,
+            fontSize = if (isArrow) 16.sp else 13.5.sp,
+            fontFamily = FontFamily.Default,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = if (isArrow) 0.sp else 0.5.sp,
             maxLines = 1
         )
 
