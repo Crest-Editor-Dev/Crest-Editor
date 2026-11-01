@@ -66,9 +66,9 @@ fi
 
     # Create initrc if it doesn't exist or needs update
     cat <<'EOF' > /initrc
-# Source rc files if they exist
+# Source rc files if they exist (POSIX compliant)
 if [ -f "/etc/profile" ]; then
-    source "/etc/profile"
+    . "/etc/profile"
 fi
 
 # Environment setup
@@ -76,18 +76,16 @@ export PATH=$PATH:/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/
 
 export HOME=/public
 export TERM=xterm-256color
-SHELL=/bin/bash
 export PIP_BREAK_SYSTEM_PACKAGES=1
 export PS1='\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\w\[\033[0m\] \$ '
 
-# Enable bracketed paste in readline (stops line-by-line execution on paste)
+# Enable bracketed paste in readline if supported
 bind 'set enable-bracketed-paste on' 2>/dev/null || true
 
-# Replicate behaviour of termux
 alias clear='reset'
 
 if [ -f "$HOME/.bashrc" ]; then
-    source "$HOME/.bashrc"
+    . "$HOME/.bashrc"
 fi
 EOF
     chmod +x /initrc
@@ -118,16 +116,87 @@ if [ ! -f "$PREFIX/.first_boot_script_run" ]; then
     touch "$PREFIX/.first_boot_script_run" 2>/dev/null || true
 fi
 
-# Shell Login System: Bash if installed, otherwise fallback to /bin/sh
-if [ -x /bin/bash ]; then
-    exec /bin/bash --rcfile /initrc -i
-elif [ -x /usr/bin/bash ]; then
-    exec /usr/bin/bash --rcfile /initrc -i
-elif [ -x "$PREFIX/alpine/bin/bash" ]; then
-    exec "$PREFIX/alpine/bin/bash" --rcfile /initrc -i
-elif [ -x "$PREFIX/alpine/usr/bin/bash" ]; then
-    exec "$PREFIX/alpine/usr/bin/bash" --rcfile /initrc -i
-else
-    export ENV=/initrc
-    exec /bin/sh -i
+# Shell Login System: Dynamic Resolution & Execution
+# Priority 1: PREFERRED_SHELL (Android Settings / App Environment)
+# Priority 2: ~/.config/crest/shell (User container configuration)
+# Priority 3: Fallback (bash -> sh)
+
+resolve_shell_path() {
+    candidate="$1"
+    [ -z "$candidate" ] && return 1
+
+    # Check if direct absolute or relative path was provided and is executable
+    if [ -x "$candidate" ]; then
+        echo "$candidate"
+        return 0
+    fi
+
+    # Lookup via command -v
+    resolved="$(command -v "$candidate" 2>/dev/null)"
+    if [ -n "$resolved" ] && [ -x "$resolved" ]; then
+        echo "$resolved"
+        return 0
+    fi
+
+    return 1
+}
+
+CANDIDATE_SHELL=""
+
+if [ -n "$PREFERRED_SHELL" ]; then
+    CANDIDATE_SHELL="$PREFERRED_SHELL"
+elif [ -f "$HOME/.config/crest/shell" ]; then
+    CANDIDATE_SHELL="$(head -n 1 "$HOME/.config/crest/shell" 2>/dev/null | tr -d '[:space:]')"
 fi
+
+TARGET_SHELL=""
+
+if [ -n "$CANDIDATE_SHELL" ]; then
+    TARGET_SHELL="$(resolve_shell_path "$CANDIDATE_SHELL")"
+    if [ -z "$TARGET_SHELL" ]; then
+        echo "[CrestEditor] Warning: Preferred shell '$CANDIDATE_SHELL' not found or not executable." >&2
+        echo "[CrestEditor] Falling back to default shell..." >&2
+    fi
+fi
+
+# Fallback sequence: try bash first, then sh
+if [ -z "$TARGET_SHELL" ]; then
+    TARGET_SHELL="$(resolve_shell_path "bash")"
+fi
+
+if [ -z "$TARGET_SHELL" ]; then
+    TARGET_SHELL="$(resolve_shell_path "sh")"
+fi
+
+# Fatal check: prevent infinite loop if even /bin/sh is unavailable
+if [ -z "$TARGET_SHELL" ]; then
+    echo "[CrestEditor] Fatal Error: No usable shell (/bin/sh) found in system." >&2
+    exit 1
+fi
+
+export SHELL="$TARGET_SHELL"
+SHELL_NAME="$(basename "$TARGET_SHELL")"
+
+case "$SHELL_NAME" in
+    bash)
+        if [ -f /initrc ]; then
+            exec "$TARGET_SHELL" --rcfile /initrc -i
+        else
+            exec "$TARGET_SHELL" -i
+        fi
+        ;;
+    zsh)
+        exec "$TARGET_SHELL" -i
+        ;;
+    fish)
+        exec "$TARGET_SHELL" -i
+        ;;
+    sh|ash|dash)
+        export ENV=/initrc
+        exec "$TARGET_SHELL" -i
+        ;;
+    *)
+        # Unknown / custom shell: default to interactive mode
+        exec "$TARGET_SHELL" -i
+        ;;
+esac

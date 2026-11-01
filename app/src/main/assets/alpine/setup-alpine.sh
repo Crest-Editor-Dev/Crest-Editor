@@ -31,20 +31,17 @@ https://dl-cdn.alpinelinux.org/alpine/edge/community
 EOF
 fi
 
-sed -i 's|heysaish\.github\.io/Crest-Packages|cresteditor\.github\.io/Crest-Packages|g' /etc/apk/repositories 2>/dev/null || true
-if ! grep -q "cresteditor\.github\.io/Crest-Packages" /etc/apk/repositories 2>/dev/null; then
-    cat >> /etc/apk/repositories <<'EOF'
-https://cresteditor.github.io/Crest-Packages
-EOF
+if ! grep -q 'crest-editor-dev.github.io/Crest-Packages' /etc/apk/repositories; then
+    echo 'https://crest-editor-dev.github.io/Crest-Packages' >> /etc/apk/repositories
 fi
 
-echo "[4/4] Updating APK indexes & installing Bash and CPM..."
+echo "[4/4] Updating APK indexes & installing Bash, CPM, and CHSH..."
 apk update || true
-apk add bash cpm || true
+apk add bash cpm chsh || true
 
 echo
 echo "=========================================="
-echo " Alpine & CPM setup completed! 🐧🚀"
+echo " Crest Terminal Setup Completed "
 echo "=========================================="
 echo
 if command -v bash >/dev/null 2>&1; then
@@ -55,4 +52,8 @@ fi
 
 if command -v cpm >/dev/null 2>&1; then
     echo "CPM:  $(cpm --version)"
+fi
+
+if command -v chsh >/dev/null 2>&1; then
+    echo "CHSH: $(chsh --version)"
 fi

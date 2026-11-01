@@ -73,6 +73,7 @@ class SettingsManager(private val context: Context) {
 
         const val KEY_TERMINAL_FONT_SIZE = "terminal.integrated.fontSize"
         const val KEY_TERMINAL_CURSOR_STYLE = "terminal.integrated.cursorStyle"
+        const val KEY_TERMINAL_DEFAULT_SHELL = "terminal.integrated.shell"
 
         val SCHEMA: List<SettingDefinition> = listOf(
             SettingDefinition(
@@ -184,6 +185,14 @@ class SettingsManager(private val context: Context) {
                 type = SettingType.ENUM,
                 defaultValue = "block",
                 options = listOf("block", "line", "underline")
+            ),
+            SettingDefinition(
+                key = KEY_TERMINAL_DEFAULT_SHELL,
+                title = "Terminal: Integrated Shell",
+                category = CAT_TERMINAL,
+                description = "Specifies the default shell to use in the terminal (e.g. bash, zsh, fish, or an absolute path).",
+                type = SettingType.STRING,
+                defaultValue = "bash"
             )
         )
     }

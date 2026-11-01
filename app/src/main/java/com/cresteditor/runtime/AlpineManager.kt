@@ -344,7 +344,8 @@ class AlpineManager(private val context: Context) {
 
     fun createAlpineTerminalSession(
         client: com.termux.terminal.TerminalSessionClient,
-        initialPath: String? = null
+        initialPath: String? = null,
+        preferredShell: String? = null
     ): com.termux.terminal.TerminalSession {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val filesPath = filesDir.absolutePath
@@ -373,7 +374,15 @@ class AlpineManager(private val context: Context) {
             publicDir
         }
 
-        val envList = arrayOf(
+        val effectiveShell = preferredShell?.takeIf { it.isNotBlank() } ?: runCatching {
+            val settingsFile = File(filesDir, "settings.json")
+            if (settingsFile.exists()) {
+                val json = org.json.JSONObject(settingsFile.readText())
+                json.optString("terminal.integrated.shell", null)
+            } else null
+        }.getOrNull()
+
+        val env = mutableListOf(
             "PREFIX=$filesPath",
             "NATIVE_DIR=$nativeDir",
             "HOME=/public",
@@ -382,6 +391,10 @@ class AlpineManager(private val context: Context) {
             "LD_LIBRARY_PATH=$filesPath:$nativeDir",
             "INITIAL_CWD=${normalizePathForAlpine(workingDir.absolutePath)}"
         )
+        if (!effectiveShell.isNullOrBlank()) {
+            env.add("PREFERRED_SHELL=$effectiveShell")
+        }
+        val envList = env.toTypedArray()
 
         val shellPath = "/system/bin/sh"
         val args = arrayOf("/system/bin/sh", initSandboxScript)
