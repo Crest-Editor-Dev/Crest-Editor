@@ -201,10 +201,14 @@ class MainActivity : ComponentActivity() {
                     drawerState = drawerState,
                     gesturesEnabled = drawerState.isOpen,
                     drawerContent = {
-                        ModalDrawerSheet {
+                        ModalDrawerSheet(
+                            drawerContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            drawerShape = androidx.compose.ui.graphics.RectangleShape
+                        ) {
                             CrestFileDrawer(
                                 projectName = workspaceDir.name,
                                 fileList = fileTreeItems,
+                                activeTabId = activeTabId,
                                 onFileSelect = { item ->
                                     scope.launch {
                                         drawerState.close()
@@ -218,6 +222,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNewFolderClick = {
                                     viewModel.openCreateDialog(isFolder = true)
+                                },
+                                onRefreshClick = {
+                                    viewModel.refreshWorkspace(this@MainActivity)
                                 },
                                 onTerminalClick = {
                                     scope.launch {

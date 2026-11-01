@@ -1,20 +1,71 @@
 package com.cresteditor.ui.components
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cresteditor.ui.theme.*
+
+// =============================================================================
+// VS CODE THEME CONSTANTS (Activity Bar & Primary Side Bar)
+// =============================================================================
+private val VSCodeActivityBarBg = Color(0xFF181818)          // activityBar.background (Modern dark)
+private val VSCodeActivityBarFg = Color(0xFFFFFFFF)          // activityBar.foreground
+private val VSCodeActivityBarInactive = Color(0xFF858585)    // activityBar.inactiveForeground
+private val VSCodeActivityBarIndicator = Color(0xFFFFFFFF)   // activityBar.activeBorder (white strip)
+
+private val VSCodeSideBarBg = Color(0xFF252526)              // sideBar.background
+private val VSCodeSideBarTitle = Color(0xFFBBBBBB)           // sideBarTitle.foreground
+private val VSCodeSideBarBorder = Color(0xFF1E1E1E)          // sideBar.border
+private val VSCodeSectionHeaderBg = Color(0x33808080)        // sideBarSectionHeader.background
+private val VSCodeSectionHeaderFg = Color(0xFFCCCCCC)        // sideBarSectionHeader.foreground
+
+private val VSCodeListSelectionBg = Color(0xFF04395E)        // list.activeSelectionBackground
+private val VSCodeListHoverBg = Color(0xFF2A2D2E)            // list.hoverBackground
+private val VSCodeTextPrimary = Color(0xFFCCCCCC)            // editor.foreground
+private val VSCodeTextActive = Color(0xFFFFFFFF)
+private val VSCodeInputBg = Color(0xFF313131)
+private val VSCodeInputBorder = Color(0xFF3C3C3C)
+private val VSCodeFocusBorder = Color(0xFF007ACC)
+
+// File Extension Icon Colors
+private val ColorFolder = Color(0xFFDCDCAA)
+private val ColorKotlin = Color(0xFFFFA657)
+private val ColorJavaScript = Color(0xFFF7DF1E)
+private val ColorTypeScript = Color(0xFF3178C6)
+private val ColorJson = Color(0xFFCBCB41)
+private val ColorHtml = Color(0xFFE34C26)
+private val ColorCss = Color(0xFF388BFD)
+private val ColorMarkdown = Color(0xFF519ABA)
+private val ColorXml = Color(0xFF4EC9B0)
+
+enum class SideBarView {
+    EXPLORER,
+    SEARCH,
+    SOURCE_CONTROL
+}
 
 data class FileTreeItem(
     val id: String,
@@ -24,142 +75,543 @@ data class FileTreeItem(
     val path: String = id
 )
 
+/**
+ * Pixel-perfect VS Code Left Side Bar for Crest-Editor.
+ * Features:
+ * 1. Activity Bar (48dp left strip):
+ *    - Explorer, Search, Source Control (Git), Terminal, Settings (Gear)
+ *    - Active white vertical indicator bar on left edge
+ * 2. Primary Side Bar (~250dp pane):
+ *    - Uppercase section header ("EXPLORER") with action icons (New File, New Folder, Refresh, Collapse All)
+ *    - Collapsible Workspace root folder header ("▼ WORKSPACE_NAME")
+ *    - Tree view with collapsible folders (▶ / ▼) and file extension-colored icons
+ *    - Active open file highlighted in VS Code blue selection background
+ *    - In-place Search view & Source Control view
+ */
 @Composable
 fun CrestFileDrawer(
     projectName: String = "Crest Project",
     fileList: List<FileTreeItem> = emptyList(),
+    activeTabId: String = "",
     onFileSelect: (FileTreeItem) -> Unit = {},
     onNewFileClick: () -> Unit = {},
     onNewFolderClick: () -> Unit = {},
+    onRefreshClick: () -> Unit = {},
     onTerminalClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onCloseDrawer: () -> Unit = {}
 ) {
-    Column(
+    var activeView by remember { mutableStateOf(SideBarView.EXPLORER) }
+    var isProjectCollapsed by remember { mutableStateOf(false) }
+    var collapsedPaths by remember { mutableStateOf(setOf<String>()) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    Row(
         modifier = Modifier
             .fillMaxHeight()
-            .width(280.dp)
-            .background(CrestSurface)
+            .width(310.dp)
+            .background(VSCodeSideBarBg)
     ) {
-        // Workspace Header
-        Row(
+        // =====================================================================
+        // 1. ACTIVITY BAR (48dp Width - Exact VS Code Left Dock)
+        // =====================================================================
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .background(CrestSurfaceHeader)
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .width(48.dp)
+                .fillMaxHeight()
+                .background(VSCodeActivityBarBg)
+                .border(
+                    width = 1.dp,
+                    color = VSCodeSideBarBorder,
+                    shape = androidx.compose.ui.graphics.RectangleShape
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector = Icons.Default.FolderOpen,
-                contentDescription = null,
-                tint = CrestAccentPrimary
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Explorer Item
+            ActivityBarItem(
+                icon = Icons.Default.FolderCopy,
+                contentDescription = "Explorer",
+                isSelected = activeView == SideBarView.EXPLORER,
+                onClick = { activeView = SideBarView.EXPLORER }
             )
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Text(
-                text = projectName,
-                color = CrestTextActive,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+            // Search Item
+            ActivityBarItem(
+                icon = Icons.Default.Search,
+                contentDescription = "Search",
+                isSelected = activeView == SideBarView.SEARCH,
+                onClick = { activeView = SideBarView.SEARCH }
             )
 
-            IconButton(onClick = onNewFileClick) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "New File",
-                    tint = CrestTextPrimary
-                )
-            }
+            // Source Control (Git) Item
+            ActivityBarItem(
+                icon = Icons.Default.AccountTree,
+                contentDescription = "Source Control",
+                isSelected = activeView == SideBarView.SOURCE_CONTROL,
+                onClick = { activeView = SideBarView.SOURCE_CONTROL }
+            )
 
-            IconButton(onClick = onNewFolderClick) {
-                Icon(
-                    imageVector = Icons.Default.CreateNewFolder,
-                    contentDescription = "New Folder",
-                    tint = CrestTextPrimary
-                )
-            }
+            // Terminal Launcher
+            ActivityBarItem(
+                icon = Icons.Default.Terminal,
+                contentDescription = "Terminal",
+                isSelected = false,
+                onClick = onTerminalClick
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Settings (Gear) at bottom
+            ActivityBarItem(
+                icon = Icons.Default.Settings,
+                contentDescription = "Settings",
+                isSelected = false,
+                onClick = onSettingsClick
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        Divider(color = CrestBorder, thickness = 1.dp)
-
-        // File Tree List
-        LazyColumn(
+        // =====================================================================
+        // 2. PRIMARY SIDE BAR PANE (~262dp Width)
+        // =====================================================================
+        Column(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
+                .fillMaxHeight()
+                .background(VSCodeSideBarBg)
         ) {
-            items(fileList) { item ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp)
-                        .clickable { onFileSelect(item) }
-                        .padding(start = (item.level * 16 + 12).dp, end = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (item.isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile,
-                        contentDescription = null,
-                        tint = if (item.isDirectory) CrestAccentYellow else CrestAccentGreen,
-                        modifier = Modifier.size(18.dp)
-                    )
+            when (activeView) {
+                SideBarView.EXPLORER -> {
+                    // ---------------------------------------------------------
+                    // Explorer Header (Height 36dp, Uppercase, Actions)
+                    // ---------------------------------------------------------
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "EXPLORER",
+                            color = VSCodeSideBarTitle,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // New File
+                            IconButton(
+                                onClick = onNewFileClick,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "New File",
+                                    tint = VSCodeTextPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
 
-                    Text(
-                        text = item.name,
-                        color = CrestTextPrimary,
-                        fontSize = 14.sp
-                    )
+                            // New Folder
+                            IconButton(
+                                onClick = onNewFolderClick,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CreateNewFolder,
+                                    contentDescription = "New Folder",
+                                    tint = VSCodeTextPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            // Refresh
+                            IconButton(
+                                onClick = onRefreshClick,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Refresh Explorer",
+                                    tint = VSCodeTextPrimary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+
+                            // Collapse All
+                            IconButton(
+                                onClick = {
+                                    val allDirPaths = fileList.filter { it.isDirectory }.map { it.path }.toSet()
+                                    collapsedPaths = if (collapsedPaths.isEmpty()) allDirPaths else emptySet()
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.UnfoldLess,
+                                    contentDescription = "Collapse Folders",
+                                    tint = VSCodeTextPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // ---------------------------------------------------------
+                    // Collapsible Root Project Accordion Bar
+                    // ---------------------------------------------------------
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(26.dp)
+                            .background(VSCodeSectionHeaderBg)
+                            .clickable { isProjectCollapsed = !isProjectCollapsed }
+                            .padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isProjectCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = VSCodeSectionHeaderFg,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = projectName.uppercase(),
+                            color = VSCodeSectionHeaderFg,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    // ---------------------------------------------------------
+                    // File Tree List
+                    // ---------------------------------------------------------
+                    if (!isProjectCollapsed) {
+                        val visibleFiles = remember(fileList, collapsedPaths) {
+                            fileList.filter { item ->
+                                // Check if any ancestor folder of this item is collapsed
+                                val isHiddenByAncestor = collapsedPaths.any { collapsedPath ->
+                                    item.path != collapsedPath && item.path.startsWith(collapsedPath)
+                                }
+                                !isHiddenByAncestor
+                            }
+                        }
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(vertical = 2.dp)
+                        ) {
+                            items(visibleFiles, key = { it.path }) { item ->
+                                val isFolder = item.isDirectory
+                                val isCollapsed = collapsedPaths.contains(item.path)
+                                val isActive = !isFolder && item.path == activeTabId
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(26.dp)
+                                        .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
+                                        .clickable {
+                                            if (isFolder) {
+                                                collapsedPaths = if (isCollapsed) {
+                                                    collapsedPaths - item.path
+                                                } else {
+                                                    collapsedPaths + item.path
+                                                }
+                                            } else {
+                                                onFileSelect(item)
+                                            }
+                                        }
+                                        .padding(start = (item.level * 12 + 6).dp, end = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Folder Chevron Arrow / File Spacer
+                                    if (isFolder) {
+                                        Icon(
+                                            imageVector = if (isCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
+                                            contentDescription = null,
+                                            tint = VSCodeActivityBarInactive,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    } else {
+                                        Spacer(modifier = Modifier.width(15.dp))
+                                    }
+
+                                    Spacer(modifier = Modifier.width(4.dp))
+
+                                    // File / Folder Icon
+                                    val iconData = getFileIcon(item.name, isFolder, !isCollapsed)
+                                    Icon(
+                                        imageVector = iconData.first,
+                                        contentDescription = null,
+                                        tint = iconData.second,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.width(6.dp))
+
+                                    // Name
+                                    Text(
+                                        text = item.name,
+                                        color = if (isActive) VSCodeTextActive else VSCodeTextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SideBarView.SEARCH -> {
+                    // ---------------------------------------------------------
+                    // Search Pane View
+                    // ---------------------------------------------------------
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = "SEARCH",
+                            color = VSCodeSideBarTitle,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+
+                        var isFocused by remember { mutableStateOf(false) }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(32.dp)
+                                .background(VSCodeInputBg, RoundedCornerShape(2.dp))
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isFocused) VSCodeFocusBorder else VSCodeInputBorder,
+                                    shape = RoundedCornerShape(2.dp)
+                                )
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = VSCodeActivityBarInactive,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(modifier = Modifier.weight(1f)) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search in files",
+                                        color = VSCodeActivityBarInactive,
+                                        fontSize = 12.5.sp
+                                    )
+                                }
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onFocusChanged { isFocused = it.isFocused },
+                                    singleLine = true,
+                                    textStyle = TextStyle(
+                                        color = VSCodeTextActive,
+                                        fontSize = 12.5.sp
+                                    ),
+                                    cursorBrush = SolidColor(VSCodeFocusBorder)
+                                )
+                            }
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(
+                                    onClick = { searchQuery = "" },
+                                    modifier = Modifier.size(18.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear",
+                                        tint = VSCodeActivityBarInactive,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        val filteredFiles = remember(searchQuery, fileList) {
+                            if (searchQuery.isBlank()) emptyList()
+                            else fileList.filter { !it.isDirectory && it.name.contains(searchQuery, ignoreCase = true) }
+                        }
+
+                        if (searchQuery.isNotBlank()) {
+                            Text(
+                                text = "${filteredFiles.size} results in files",
+                                color = VSCodeActivityBarInactive,
+                                fontSize = 11.5.sp,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                items(filteredFiles) { item ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onFileSelect(item) }
+                                            .padding(vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val iconData = getFileIcon(item.name, false, false)
+                                        Icon(
+                                            imageVector = iconData.first,
+                                            contentDescription = null,
+                                            tint = iconData.second,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = item.name,
+                                            color = VSCodeTextPrimary,
+                                            fontSize = 12.5.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                SideBarView.SOURCE_CONTROL -> {
+                    // ---------------------------------------------------------
+                    // Source Control (Git) View
+                    // ---------------------------------------------------------
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = "SOURCE CONTROL",
+                            color = VSCodeSideBarTitle,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(26.dp)
+                                .background(VSCodeSectionHeaderBg)
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = VSCodeSectionHeaderFg,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "CHANGES",
+                                color = VSCodeSectionHeaderFg,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "Workspace Git repository synced.",
+                            color = VSCodeActivityBarInactive,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                    }
                 }
             }
         }
+    }
+}
 
-        Divider(color = CrestBorder, thickness = 1.dp)
-
-        // Bottom Tools Bar
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .background(CrestSurfaceHeader)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            TextButton(onClick = onTerminalClick) {
-                Icon(
-                    imageVector = Icons.Default.Terminal,
-                    contentDescription = null,
-                    tint = CrestTextPrimary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Terminal", color = CrestTextPrimary, fontSize = 12.sp)
-            }
-
-            TextButton(onClick = {}) {
-                Icon(
-                    imageVector = Icons.Default.AccountTree,
-                    contentDescription = null,
-                    tint = CrestTextPrimary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Git", color = CrestTextPrimary, fontSize = 12.sp)
-            }
-
-            IconButton(onClick = onSettingsClick) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = CrestTextPrimary
-                )
-            }
+/**
+ * Individual Activity Bar Icon with Left Indicator Line.
+ */
+@Composable
+private fun ActivityBarItem(
+    icon: ImageVector,
+    contentDescription: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        // Iconic VS Code 2dp vertical active indicator on the far left edge
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .width(2.dp)
+                    .height(24.dp)
+                    .background(VSCodeActivityBarIndicator)
+                    .align(Alignment.CenterStart)
+            )
         }
+
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (isSelected) VSCodeActivityBarFg else VSCodeActivityBarInactive,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+/**
+ * Helper to get extension-based file icons and colors.
+ */
+private fun getFileIcon(filename: String, isDirectory: Boolean, isExpanded: Boolean): Pair<ImageVector, Color> {
+    if (isDirectory) {
+        return Pair(
+            if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
+            ColorFolder
+        )
+    }
+
+    val ext = filename.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        "kt", "kts" -> Pair(Icons.Default.Code, ColorKotlin)
+        "js", "jsx", "mjs" -> Pair(Icons.Default.Javascript, ColorJavaScript)
+        "ts", "tsx" -> Pair(Icons.Default.Code, ColorTypeScript)
+        "json" -> Pair(Icons.Default.DataObject, ColorJson)
+        "html", "htm" -> Pair(Icons.Default.Html, ColorHtml)
+        "css", "scss", "less" -> Pair(Icons.Default.Css, ColorCss)
+        "md", "markdown" -> Pair(Icons.Default.Description, ColorMarkdown)
+        "xml" -> Pair(Icons.Default.Code, ColorXml)
+        "sh", "bash" -> Pair(Icons.Default.Terminal, ColorKotlin)
+        else -> Pair(Icons.Default.InsertDriveFile, VSCodeTextPrimary)
     }
 }
