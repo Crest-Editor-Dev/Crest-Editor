@@ -31,9 +31,10 @@ https://dl-cdn.alpinelinux.org/alpine/edge/community
 EOF
 fi
 
-if ! grep -q "Crest-Packages" /etc/apk/repositories 2>/dev/null; then
+sed -i 's|heysaish\.github\.io/Crest-Packages|cresteditor\.github\.io/Crest-Packages|g' /etc/apk/repositories 2>/dev/null || true
+if ! grep -q "cresteditor\.github\.io/Crest-Packages" /etc/apk/repositories 2>/dev/null; then
     cat >> /etc/apk/repositories <<'EOF'
-https://heysaish.github.io/Crest-Packages
+https://cresteditor.github.io/Crest-Packages
 EOF
 fi
 
