@@ -19,7 +19,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Xt-manager"
+rootProject.name = "CrestEditor"
 include(":app")
 include(":terminal-emulator")
 include(":terminal-view")

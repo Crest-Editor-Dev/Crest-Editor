@@ -1,4 +1,4 @@
-# CrestCode
+# CrestEditor
 
 A high-performance Android code editor built with Jetpack Compose and a desktop-grade editor engine, designed for mobile developers who want a VS Code-like workflow on Android.
 
@@ -10,7 +10,7 @@ A high-performance Android code editor built with Jetpack Compose and a desktop-
 
 ## Overview
 
-CrestCode brings the feel of a desktop IDE to Android devices. It combines a touch-optimized Monaco editor, a Linux-based development environment, and a native Compose interface to provide a fast, flexible, and familiar coding experience for mobile development.
+CrestEditor brings the feel of a desktop IDE to Android devices. It combines a touch-optimized Monaco editor, a Linux-based development environment, and a native Compose interface to provide a fast, flexible, and familiar coding experience for mobile development.
 
 This project aims to make coding on Android feel less like a compromise and more like a proper workspace: multi-tab editing, terminal access, filesystem tools, settings management, and developer workflows that work well on smaller screens.
 
@@ -42,7 +42,7 @@ This project aims to make coding on Android feel less like a compromise and more
 ## Architecture
 
 ```text
-CrestCode Android Shell
+CrestEditor Android Shell
     |
     +-- Jetpack Compose UI
     |   +-- Tabs and workspace explorer
@@ -67,12 +67,12 @@ CrestCode Android Shell
 ## Project Structure
 
 ```text
-crestcode/
+CrestEditor/
 ├── app/
 │   ├── src/main/
 │   │   ├── AndroidManifest.xml
 │   │   ├── assets/
-│   │   ├── java/com/crestcode/
+│   │   ├── java/com/cresteditor/
 │   │   ├── core/
 │   │   ├── editor/
 │   │   ├── runtime/

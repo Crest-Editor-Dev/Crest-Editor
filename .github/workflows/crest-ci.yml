@@ -75,7 +75,7 @@ jobs:
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: crestcode-release-${{ github.run_number }}
+          name: cresteditor-release-${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release.apk
           compression-level: 0
           if-no-files-found: error

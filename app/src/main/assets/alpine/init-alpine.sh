@@ -99,7 +99,7 @@ EOF
 
     # Ensure /etc/profile.d has PS1 override
     if [ -d /etc/profile.d ]; then
-        cat <<'EOF' > /etc/profile.d/crestcode.sh
+        cat <<'EOF' > /etc/profile.d/cresteditor.sh
 export PS1='\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\w\[\033[0m\] \$ '
 bind 'set enable-bracketed-paste on' 2>/dev/null || true
 EOF

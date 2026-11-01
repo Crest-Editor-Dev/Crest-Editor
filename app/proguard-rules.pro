@@ -4,9 +4,9 @@
 }
 
 # Keep JNI model classes used by native C/Rust JNI engines
--keep class com.crestcode.core.filesystem.LocalFileSystem** { *; }
--keep class com.crestcode.core.model.** { *; }
--keep class com.crestcode.runtime.** { *; }
+-keep class com.cresteditor.core.filesystem.LocalFileSystem** { *; }
+-keep class com.cresteditor.core.model.** { *; }
+-keep class com.cresteditor.runtime.** { *; }
 -keep class com.termux.** { *; }
 -keep class com.jcraft.jsch.** { *; }
 

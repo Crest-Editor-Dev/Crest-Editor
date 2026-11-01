@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.crestcode">
+    package="com.cresteditor">
 
     <!-- Storage permissions -->
     
@@ -20,7 +20,7 @@
         android:enableOnBackInvokedCallback="true"
         android:extractNativeLibs="true"
         android:icon="@android:drawable/ic_menu_manage"
-        android:label="CrestCode"
+        android:label="CrestEditor"
         android:roundIcon="@android:drawable/ic_menu_manage"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
