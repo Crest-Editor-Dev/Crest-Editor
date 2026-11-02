@@ -186,15 +186,14 @@ fun CrestFileDrawer(
             when (activeView) {
                 SideBarView.EXPLORER -> {
                     // ---------------------------------------------------------
-                    // Explorer Header (Height 36dp, Uppercase, Actions)
+                    // Explorer Header (Clean VS Code title bar)
                     // ---------------------------------------------------------
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(36.dp)
                             .padding(horizontal = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "EXPLORER",
@@ -203,44 +202,80 @@ fun CrestFileDrawer(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.5.sp
                         )
+                    }
 
+                    // ---------------------------------------------------------
+                    // Collapsible Root Project Accordion Bar (with Action Buttons)
+                    // ---------------------------------------------------------
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(32.dp)
+                            .background(VSCodeSectionHeaderBg)
+                            .padding(start = 6.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { isProjectCollapsed = !isProjectCollapsed },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isProjectCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = VSCodeSectionHeaderFg,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = projectName.uppercase(),
+                                color = VSCodeSectionHeaderFg,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        // Action Buttons on Root Workspace Bar
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             // New File
                             IconButton(
                                 onClick = onNewFileClick,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = "New File",
                                     tint = VSCodeTextPrimary,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
 
                             // New Folder
                             IconButton(
                                 onClick = onNewFolderClick,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.CreateNewFolder,
                                     contentDescription = "New Folder",
                                     tint = VSCodeTextPrimary,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
 
                             // Refresh
                             IconButton(
                                 onClick = onRefreshClick,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
                                     contentDescription = "Refresh Explorer",
                                     tint = VSCodeTextPrimary,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
 
@@ -250,45 +285,16 @@ fun CrestFileDrawer(
                                     val allDirPaths = fileList.filter { it.isDirectory }.map { it.path }.toSet()
                                     collapsedPaths = if (collapsedPaths.isEmpty()) allDirPaths else emptySet()
                                 },
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.UnfoldLess,
                                     contentDescription = "Collapse Folders",
                                     tint = VSCodeTextPrimary,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
                         }
-                    }
-
-                    // ---------------------------------------------------------
-                    // Collapsible Root Project Accordion Bar
-                    // ---------------------------------------------------------
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(26.dp)
-                            .background(VSCodeSectionHeaderBg)
-                            .clickable { isProjectCollapsed = !isProjectCollapsed }
-                            .padding(horizontal = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (isProjectCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = VSCodeSectionHeaderFg,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = projectName.uppercase(),
-                            color = VSCodeSectionHeaderFg,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
                     }
 
                     // ---------------------------------------------------------
