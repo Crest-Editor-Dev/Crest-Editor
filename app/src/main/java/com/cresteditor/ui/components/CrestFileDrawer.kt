@@ -337,29 +337,35 @@ fun CrestFileDrawer(
                                                 onFileSelect(item)
                                             }
                                         }
-                                        .padding(start = (item.level * 12 + 6).dp, end = 8.dp),
+                                        .padding(start = (item.level * 14 + 8).dp, end = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Pure VS Code Seti Style: Folders have chevron only (NO folder icon)
-                                    if (isFolder) {
-                                        Icon(
-                                            imageVector = if (isCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
-                                            contentDescription = null,
-                                            tint = VSCodeActivityBarInactive,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                    } else {
-                                        Spacer(modifier = Modifier.width(18.dp))
-                                        val iconData = getFileIcon(item.name)
-                                        Icon(
-                                            imageVector = iconData.first,
-                                            contentDescription = null,
-                                            tint = iconData.second,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                    // Exact VS Code Seti Style:
+                                    // Sibling folder arrow and file icon start at the EXACT same position!
+                                    // Children inside a folder are indented ahead by level * 14.dp
+                                    Box(
+                                        modifier = Modifier.size(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isFolder) {
+                                            Icon(
+                                                imageVector = if (isCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
+                                                contentDescription = null,
+                                                tint = VSCodeActivityBarInactive,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        } else {
+                                            val iconData = getFileIcon(item.name)
+                                            Icon(
+                                                imageVector = iconData.first,
+                                                contentDescription = null,
+                                                tint = iconData.second,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
                                     }
+
+                                    Spacer(modifier = Modifier.width(6.dp))
 
                                     // Name
                                     Text(
