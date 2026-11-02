@@ -334,7 +334,7 @@ fun CrestFileDrawer(
                                         .padding(start = (item.level * 12 + 6).dp, end = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Folder Chevron Arrow / File Spacer
+                                    // Pure VS Code Seti Style: Folders have chevron only (NO folder icon)
                                     if (isFolder) {
                                         Icon(
                                             imageVector = if (isCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
@@ -342,22 +342,18 @@ fun CrestFileDrawer(
                                             tint = VSCodeActivityBarInactive,
                                             modifier = Modifier.size(15.dp)
                                         )
+                                        Spacer(modifier = Modifier.width(6.dp))
                                     } else {
-                                        Spacer(modifier = Modifier.width(15.dp))
+                                        Spacer(modifier = Modifier.width(18.dp))
+                                        val iconData = getFileIcon(item.name)
+                                        Icon(
+                                            imageVector = iconData.first,
+                                            contentDescription = null,
+                                            tint = iconData.second,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
                                     }
-
-                                    Spacer(modifier = Modifier.width(4.dp))
-
-                                    // File / Folder Icon
-                                    val iconData = getFileIcon(item.name, isFolder, !isCollapsed)
-                                    Icon(
-                                        imageVector = iconData.first,
-                                        contentDescription = null,
-                                        tint = iconData.second,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-
-                                    Spacer(modifier = Modifier.width(6.dp))
 
                                     // Name
                                     Text(
@@ -474,7 +470,7 @@ fun CrestFileDrawer(
                                             .padding(vertical = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        val iconData = getFileIcon(item.name, false, false)
+                                        val iconData = getFileIcon(item.name)
                                         Icon(
                                             imageVector = iconData.first,
                                             contentDescription = null,
@@ -591,16 +587,9 @@ private fun ActivityBarItem(
 }
 
 /**
- * Helper to get extension-based file icons and colors.
+ * Helper to get extension-based file icons and colors (Seti theme style).
  */
-private fun getFileIcon(filename: String, isDirectory: Boolean, isExpanded: Boolean): Pair<ImageVector, Color> {
-    if (isDirectory) {
-        return Pair(
-            if (isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
-            ColorFolder
-        )
-    }
-
+private fun getFileIcon(filename: String): Pair<ImageVector, Color> {
     val ext = filename.substringAfterLast('.', "").lowercase()
     return when (ext) {
         "kt", "kts" -> Pair(Icons.Default.Code, ColorKotlin)
