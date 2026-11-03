@@ -303,9 +303,15 @@ fun CrestFileDrawer(
                     if (!isProjectCollapsed) {
                         val visibleFiles = remember(fileList, collapsedPaths) {
                             fileList.filter { item ->
-                                // Check if any ancestor folder of this item is collapsed
+                                // Check if any ancestor folder of this item is collapsed.
+                                // Must append File.separator so "/workspace/main" does NOT accidentally match "/workspace/main.js"!
                                 val isHiddenByAncestor = collapsedPaths.any { collapsedPath ->
-                                    item.path != collapsedPath && item.path.startsWith(collapsedPath)
+                                    val prefix = if (collapsedPath.endsWith(java.io.File.separator)) {
+                                        collapsedPath
+                                    } else {
+                                        "$collapsedPath${java.io.File.separator}"
+                                    }
+                                    item.path.startsWith(prefix)
                                 }
                                 !isHiddenByAncestor
                             }
