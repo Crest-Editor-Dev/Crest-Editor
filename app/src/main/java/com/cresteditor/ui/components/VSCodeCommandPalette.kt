@@ -19,11 +19,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -36,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.cresteditor.core.commands.CommandItem
 import com.cresteditor.core.commands.CommandPaletteEntry
 import com.cresteditor.core.commands.CommandRegistry
@@ -99,10 +102,16 @@ fun VSCodeCommandPalette(
             dismissOnClickOutside = true
         )
     ) {
+        // Remove Android default dialog window dimming so editor background stays crystal clear
+        val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect {
+            dialogWindow?.setDimAmount(0f)
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0x73000000))
+                .background(Color.Transparent)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
@@ -111,13 +120,19 @@ fun VSCodeCommandPalette(
         ) {
             Column(
                 modifier = Modifier
-                    .padding(top = 10.dp)
-                    .fillMaxWidth(0.94f)
-                    .widthIn(max = 580.dp)
+                    .padding(top = 8.dp)
+                    .fillMaxWidth(0.88f)
+                    .widthIn(max = 480.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { /* Consume click inside modal */ }
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = RoundedCornerShape(6.dp),
+                        spotColor = Color(0x80000000),
+                        ambientColor = Color(0x80000000)
+                    )
                     .background(VSCodeQuickInputBg, RoundedCornerShape(6.dp))
                     .border(1.dp, VSCodeQuickInputBorder, RoundedCornerShape(6.dp))
             ) {
@@ -240,7 +255,7 @@ fun VSCodeCommandPalette(
                         state = listState,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 380.dp)
+                            .heightIn(max = 260.dp)
                             .padding(vertical = 4.dp, horizontal = 4.dp)
                     ) {
                         itemsIndexed(entries) { _, entry ->
