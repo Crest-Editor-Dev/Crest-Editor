@@ -324,7 +324,7 @@ fun CrestFileDrawer(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(26.dp)
+                                        .height(32.dp)
                                         .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
                                         .clickable {
                                             if (isFolder) {
@@ -344,7 +344,7 @@ fun CrestFileDrawer(
                                     // Sibling folder arrow and file icon start at the EXACT same position!
                                     // Children inside a folder are indented ahead by level * 14.dp
                                     Box(
-                                        modifier = Modifier.size(16.dp),
+                                        modifier = Modifier.size(18.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (isFolder) {
@@ -352,7 +352,7 @@ fun CrestFileDrawer(
                                                 imageVector = if (isCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
                                                 contentDescription = null,
                                                 tint = VSCodeActivityBarInactive,
-                                                modifier = Modifier.size(15.dp)
+                                                modifier = Modifier.size(17.dp)
                                             )
                                         } else {
                                             val iconData = getFileIcon(item.name)
@@ -360,18 +360,18 @@ fun CrestFileDrawer(
                                                 imageVector = iconData.first,
                                                 contentDescription = null,
                                                 tint = iconData.second,
-                                                modifier = Modifier.size(15.dp)
+                                                modifier = Modifier.size(17.dp)
                                             )
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
 
                                     // Name
                                     Text(
                                         text = item.name,
                                         color = if (isActive) VSCodeTextActive else VSCodeTextPrimary,
-                                        fontSize = 13.sp,
+                                        fontSize = 14.sp,
                                         fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
@@ -479,7 +479,7 @@ fun CrestFileDrawer(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable { onFileSelect(item) }
-                                            .padding(vertical = 6.dp),
+                                            .padding(vertical = 7.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         val iconData = getFileIcon(item.name)
@@ -487,13 +487,13 @@ fun CrestFileDrawer(
                                             imageVector = iconData.first,
                                             contentDescription = null,
                                             tint = iconData.second,
-                                            modifier = Modifier.size(15.dp)
+                                            modifier = Modifier.size(17.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = item.name,
                                             color = VSCodeTextPrimary,
-                                            fontSize = 12.5.sp
+                                            fontSize = 13.5.sp
                                         )
                                     }
                                 }

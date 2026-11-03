@@ -8,6 +8,7 @@ import com.cresteditor.editor.MonacoBridge
 import com.cresteditor.ui.components.CrestTabItem
 import com.cresteditor.ui.components.FileTreeItem
 import com.cresteditor.workspace.WorkspaceManager
+import com.cresteditor.workspace.WorkspaceFileWatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,6 +56,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun loadWorkspace(context: Context, webView: WebView? = null) {
+        startFileWatcher(context)
         viewModelScope.launch {
             val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
             val items = WorkspaceManager.listFilesRecursively(workspaceDir)
@@ -67,6 +69,27 @@ class MainViewModel : ViewModel() {
                 }
             }
         }
+    }
+
+    private var fileWatcher: WorkspaceFileWatcher? = null
+
+    fun startFileWatcher(context: Context) {
+        if (fileWatcher != null) return
+        val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
+        fileWatcher = WorkspaceFileWatcher(workspaceDir, viewModelScope) {
+            refreshWorkspace(context)
+        }
+        fileWatcher?.start()
+    }
+
+    fun stopFileWatcher() {
+        fileWatcher?.stop()
+        fileWatcher = null
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopFileWatcher()
     }
 
     fun refreshWorkspace(context: Context) {
