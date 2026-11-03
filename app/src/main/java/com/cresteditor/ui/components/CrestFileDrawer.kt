@@ -49,6 +49,7 @@ private val VSCodeTextActive = Color(0xFFFFFFFF)
 private val VSCodeInputBg = Color(0xFF313131)
 private val VSCodeInputBorder = Color(0xFF3C3C3C)
 private val VSCodeFocusBorder = Color(0xFF007ACC)
+private val VSCodeTreeIndentGuideActive = Color(0xFF6E6E6E) // tree.indentGuidesStroke (#585858 / #6E6E6E)
 
 // File Extension Icon Colors
 private val ColorFolder = Color(0xFFDCDCAA)
@@ -104,7 +105,18 @@ fun CrestFileDrawer(
     var activeView by remember { mutableStateOf(SideBarView.EXPLORER) }
     var isProjectCollapsed by remember { mutableStateOf(false) }
     var collapsedPaths by remember { mutableStateOf(setOf<String>()) }
+    var activeFolderTreePath by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
+
+    // Sync active tree with active file tab if no tree was explicitly focused yet
+    LaunchedEffect(activeTabId, fileList) {
+        if (activeFolderTreePath == null && activeTabId.isNotEmpty()) {
+            val parentPath = java.io.File(activeTabId).parent
+            if (parentPath != null && !collapsedPaths.contains(parentPath) && fileList.any { it.path == parentPath && it.isDirectory }) {
+                activeFolderTreePath = parentPath
+            }
+        }
+    }
 
     Row(
         modifier = Modifier
@@ -284,6 +296,7 @@ fun CrestFileDrawer(
                                 onClick = {
                                     val allDirPaths = fileList.filter { it.isDirectory }.map { it.path }.toSet()
                                     collapsedPaths = if (collapsedPaths.isEmpty()) allDirPaths else emptySet()
+                                    activeFolderTreePath = null
                                 },
                                 modifier = Modifier.size(28.dp)
                             ) {
@@ -317,6 +330,15 @@ fun CrestFileDrawer(
                             }
                         }
 
+                        // Resolve currently active / latest open folder tree item
+                        val activeFolderItem = remember(activeFolderTreePath, fileList, collapsedPaths) {
+                            if (activeFolderTreePath == null) null
+                            else {
+                                val folder = fileList.find { it.path == activeFolderTreePath && it.isDirectory }
+                                if (folder != null && !collapsedPaths.contains(folder.path)) folder else null
+                            }
+                        }
+
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -327,61 +349,106 @@ fun CrestFileDrawer(
                                 val isCollapsed = collapsedPaths.contains(item.path)
                                 val isActive = !isFolder && item.path == activeTabId
 
-                                Row(
+                                // VS Code Indent Guide: only show guide for descendants of the latest open folder tree
+                                val isInsideActiveTree = remember(activeFolderItem, item.path) {
+                                    if (activeFolderItem == null) false
+                                    else {
+                                        val prefix = if (activeFolderItem.path.endsWith(java.io.File.separator)) {
+                                            activeFolderItem.path
+                                        } else {
+                                            "${activeFolderItem.path}${java.io.File.separator}"
+                                        }
+                                        item.path.startsWith(prefix)
+                                    }
+                                }
+
+                                Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(32.dp)
                                         .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
                                         .clickable {
                                             if (isFolder) {
-                                                collapsedPaths = if (isCollapsed) {
-                                                    collapsedPaths - item.path
+                                                if (isCollapsed) {
+                                                    // Expanding folder: this becomes the latest open active tree
+                                                    collapsedPaths = collapsedPaths - item.path
+                                                    activeFolderTreePath = item.path
                                                 } else {
-                                                    collapsedPaths + item.path
+                                                    // Collapsing folder: clear or fallback to parent open folder
+                                                    collapsedPaths = collapsedPaths + item.path
+                                                    if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${java.io.File.separator}"))) {
+                                                        val parentPath = java.io.File(item.path).parent
+                                                        val isParentOpen = parentPath != null && !collapsedPaths.contains(parentPath) && fileList.any { it.path == parentPath && it.isDirectory }
+                                                        activeFolderTreePath = if (isParentOpen) parentPath else null
+                                                    }
                                                 }
                                             } else {
                                                 onFileSelect(item)
+                                                // When selecting a file, activate its parent folder tree guide
+                                                val parentPath = java.io.File(item.path).parent
+                                                if (parentPath != null && !collapsedPaths.contains(parentPath) && fileList.any { it.path == parentPath && it.isDirectory }) {
+                                                    activeFolderTreePath = parentPath
+                                                }
                                             }
                                         }
-                                        .padding(start = (item.level * 14 + 8).dp, end = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Exact VS Code Seti Style:
-                                    // Sibling folder arrow and file icon start at the EXACT same position!
-                                    // Children inside a folder are indented ahead by level * 14.dp
-                                    Box(
-                                        modifier = Modifier.size(18.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (isFolder) {
-                                            Icon(
-                                                imageVector = if (isCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
-                                                contentDescription = null,
-                                                tint = VSCodeActivityBarInactive,
-                                                modifier = Modifier.size(17.dp)
-                                            )
-                                        } else {
-                                            val iconData = getFileIcon(item.name)
-                                            Icon(
-                                                imageVector = iconData.first,
-                                                contentDescription = null,
-                                                tint = iconData.second,
-                                                modifier = Modifier.size(17.dp)
-                                            )
-                                        }
+                                    // 1. VS Code Active Indent Guide Line
+                                    // Exact 1dp vertical line aligned under parent folder's chevron center
+                                    if (isInsideActiveTree && activeFolderItem != null) {
+                                        val guideX = (activeFolderItem.level * 14 + 17).dp
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(start = guideX)
+                                                .width(1.dp)
+                                                .fillMaxHeight()
+                                                .background(VSCodeTreeIndentGuideActive)
+                                        )
                                     }
 
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    // 2. Tree Item Content Row
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(start = (item.level * 14 + 8).dp, end = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Exact VS Code Seti Style:
+                                        // Sibling folder arrow and file icon start at the EXACT same position!
+                                        // Children inside a folder are indented ahead by level * 14.dp
+                                        Box(
+                                            modifier = Modifier.size(18.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (isFolder) {
+                                                Icon(
+                                                    imageVector = if (isCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
+                                                    contentDescription = null,
+                                                    tint = VSCodeActivityBarInactive,
+                                                    modifier = Modifier.size(17.dp)
+                                                )
+                                            } else {
+                                                val iconData = getFileIcon(item.name)
+                                                Icon(
+                                                    imageVector = iconData.first,
+                                                    contentDescription = null,
+                                                    tint = iconData.second,
+                                                    modifier = Modifier.size(17.dp)
+                                                )
+                                            }
+                                        }
 
-                                    // Name
-                                    Text(
-                                        text = item.name,
-                                        color = if (isActive) VSCodeTextActive else VSCodeTextPrimary,
-                                        fontSize = 14.sp,
-                                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // Name
+                                        Text(
+                                            text = item.name,
+                                            color = if (isActive) VSCodeTextActive else VSCodeTextPrimary,
+                                            fontSize = 14.sp,
+                                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
