@@ -104,7 +104,7 @@ fun CrestFileDrawer(
 ) {
     var activeView by remember { mutableStateOf(SideBarView.EXPLORER) }
     var isProjectCollapsed by remember { mutableStateOf(false) }
-    var collapsedPaths by remember { mutableStateOf(setOf<String>()) }
+    var expandedPaths by remember { mutableStateOf(setOf<String>()) }
     var activeFolderTreePath by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
@@ -112,7 +112,7 @@ fun CrestFileDrawer(
     LaunchedEffect(activeTabId, fileList) {
         if (activeFolderTreePath == null && activeTabId.isNotEmpty()) {
             val parentPath = java.io.File(activeTabId).parent
-            if (parentPath != null && !collapsedPaths.contains(parentPath) && fileList.any { it.path == parentPath && it.isDirectory }) {
+            if (parentPath != null && expandedPaths.contains(parentPath) && fileList.any { it.path == parentPath && it.isDirectory }) {
                 activeFolderTreePath = parentPath
             }
         }
@@ -294,8 +294,7 @@ fun CrestFileDrawer(
                             // Collapse All
                             IconButton(
                                 onClick = {
-                                    val allDirPaths = fileList.filter { it.isDirectory }.map { it.path }.toSet()
-                                    collapsedPaths = if (collapsedPaths.isEmpty()) allDirPaths else emptySet()
+                                    expandedPaths = emptySet()
                                     activeFolderTreePath = null
                                 },
                                 modifier = Modifier.size(28.dp)
@@ -314,28 +313,37 @@ fun CrestFileDrawer(
                     // File Tree List
                     // ---------------------------------------------------------
                     if (!isProjectCollapsed) {
-                        val visibleFiles = remember(fileList, collapsedPaths) {
+                        val allDirPaths = remember(fileList) {
+                            fileList.filter { it.isDirectory }.map { it.path }.toSet()
+                        }
+
+                        // By default, nested directories are collapsed.
+                        // Root items (level == 0) are visible. Nested items require all ancestor directories to be in expandedPaths.
+                        val visibleFiles = remember(fileList, expandedPaths, allDirPaths) {
                             fileList.filter { item ->
-                                // Check if any ancestor folder of this item is collapsed.
-                                // Must append File.separator so "/workspace/main" does NOT accidentally match "/workspace/main.js"!
-                                val isHiddenByAncestor = collapsedPaths.any { collapsedPath ->
-                                    val prefix = if (collapsedPath.endsWith(java.io.File.separator)) {
-                                        collapsedPath
-                                    } else {
-                                        "$collapsedPath${java.io.File.separator}"
+                                if (item.level == 0) {
+                                    true
+                                } else {
+                                    var currentParent = java.io.File(item.path).parent
+                                    var isVisible = true
+                                    while (currentParent != null && allDirPaths.contains(currentParent)) {
+                                        if (!expandedPaths.contains(currentParent)) {
+                                            isVisible = false
+                                            break
+                                        }
+                                        currentParent = java.io.File(currentParent).parent
                                     }
-                                    item.path.startsWith(prefix)
+                                    isVisible
                                 }
-                                !isHiddenByAncestor
                             }
                         }
 
                         // Resolve currently active / latest open folder tree item
-                        val activeFolderItem = remember(activeFolderTreePath, fileList, collapsedPaths) {
+                        val activeFolderItem = remember(activeFolderTreePath, fileList, expandedPaths) {
                             if (activeFolderTreePath == null) null
                             else {
                                 val folder = fileList.find { it.path == activeFolderTreePath && it.isDirectory }
-                                if (folder != null && !collapsedPaths.contains(folder.path)) folder else null
+                                if (folder != null && expandedPaths.contains(folder.path)) folder else null
                             }
                         }
 
@@ -346,7 +354,7 @@ fun CrestFileDrawer(
                         ) {
                             items(visibleFiles, key = { it.path }) { item ->
                                 val isFolder = item.isDirectory
-                                val isCollapsed = collapsedPaths.contains(item.path)
+                                val isExpanded = expandedPaths.contains(item.path)
                                 val isActive = !isFolder && item.path == activeTabId
 
                                 // VS Code Indent Guide: only show guide for descendants of the latest open folder tree
@@ -369,24 +377,24 @@ fun CrestFileDrawer(
                                         .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
                                         .clickable {
                                             if (isFolder) {
-                                                if (isCollapsed) {
-                                                    // Expanding folder: this becomes the latest open active tree
-                                                    collapsedPaths = collapsedPaths - item.path
-                                                    activeFolderTreePath = item.path
-                                                } else {
-                                                    // Collapsing folder: clear or fallback to parent open folder
-                                                    collapsedPaths = collapsedPaths + item.path
+                                                if (isExpanded) {
+                                                    // Collapsing folder: remove from expandedPaths
+                                                    expandedPaths = expandedPaths - item.path
                                                     if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${java.io.File.separator}"))) {
                                                         val parentPath = java.io.File(item.path).parent
-                                                        val isParentOpen = parentPath != null && !collapsedPaths.contains(parentPath) && fileList.any { it.path == parentPath && it.isDirectory }
-                                                        activeFolderTreePath = if (isParentOpen) parentPath else null
+                                                        val isParentExpanded = parentPath != null && expandedPaths.contains(parentPath)
+                                                        activeFolderTreePath = if (isParentExpanded) parentPath else null
                                                     }
+                                                } else {
+                                                    // Expanding folder: add only this folder to expandedPaths
+                                                    expandedPaths = expandedPaths + item.path
+                                                    activeFolderTreePath = item.path
                                                 }
                                             } else {
                                                 onFileSelect(item)
                                                 // When selecting a file, activate its parent folder tree guide
                                                 val parentPath = java.io.File(item.path).parent
-                                                if (parentPath != null && !collapsedPaths.contains(parentPath) && fileList.any { it.path == parentPath && it.isDirectory }) {
+                                                if (parentPath != null && expandedPaths.contains(parentPath)) {
                                                     activeFolderTreePath = parentPath
                                                 }
                                             }
@@ -421,7 +429,7 @@ fun CrestFileDrawer(
                                         ) {
                                             if (isFolder) {
                                                 Icon(
-                                                    imageVector = if (isCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
+                                                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
                                                     contentDescription = null,
                                                     tint = VSCodeActivityBarInactive,
                                                     modifier = Modifier.size(17.dp)
