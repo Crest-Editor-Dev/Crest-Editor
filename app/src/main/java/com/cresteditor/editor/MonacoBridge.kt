@@ -151,6 +151,20 @@ class MonacoBridge(
             webView?.evaluateJavascript("if (window.CrestEditorAPI && window.CrestEditorAPI.redo) { window.CrestEditorAPI.redo(); }", null)
         }
 
+        fun triggerAction(webView: WebView?, actionId: String) {
+            webView?.let { wv ->
+                wv.post {
+                    val js = "if (window.CrestEditorAPI && window.CrestEditorAPI.triggerAction) { " +
+                            "  window.CrestEditorAPI.triggerAction(" + JSONObject.quote(actionId) + "); " +
+                            "} else if (typeof monaco !== 'undefined') { " +
+                            "  var ed = monaco.editor.getEditors()[0]; " +
+                            "  if (ed) { ed.focus(); ed.trigger('commandPalette', " + JSONObject.quote(actionId) + ", null); } " +
+                            "}"
+                    wv.evaluateJavascript(js, null)
+                }
+            }
+        }
+
         fun handleKey(webView: WebView?, key: String) {
             webView?.evaluateJavascript(
                 "if (window.CrestEditorAPI && window.CrestEditorAPI.handleKey) { window.CrestEditorAPI.handleKey(" +

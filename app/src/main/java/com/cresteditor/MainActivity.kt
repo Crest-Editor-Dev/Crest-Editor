@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.cresteditor.core.commands.CommandItem
+import com.cresteditor.core.commands.CommandRegistry
 import com.cresteditor.core.settings.SettingsManager
 import com.cresteditor.editor.MonacoBridge
 import com.cresteditor.runtime.AlpineManager
@@ -34,6 +36,7 @@ import com.cresteditor.ui.MainViewModel
 import com.cresteditor.ui.TerminalScreen
 import com.cresteditor.ui.SettingsScreen
 import com.cresteditor.ui.components.*
+import com.cresteditor.ui.components.VSCodeCommandPalette
 import com.cresteditor.ui.theme.*
 import com.cresteditor.workspace.WorkspaceManager
 import kotlinx.coroutines.launch
@@ -44,6 +47,19 @@ class MainActivity : ComponentActivity() {
     private lateinit var alpineManager: AlpineManager
     private lateinit var settingsManager: SettingsManager
     private var webView: WebView? = null
+    private var onToggleCommandPalette: (() -> Unit)? = null
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            if (event.keyCode == android.view.KeyEvent.KEYCODE_F1 ||
+                (event.isCtrlPressed && event.isShiftPressed && event.keyCode == android.view.KeyEvent.KEYCODE_P)
+            ) {
+                onToggleCommandPalette?.invoke()
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +80,160 @@ class MainActivity : ComponentActivity() {
                 val activeLanguage by viewModel.activeLanguage.collectAsState()
                 val showTerminal by viewModel.showTerminal.collectAsState()
                 val showSettings by viewModel.showSettings.collectAsState()
+
+                var showCommandPalette by remember { mutableStateOf(false) }
+                val commandRegistry = remember { CommandRegistry() }
+
+                DisposableEffect(Unit) {
+                    onToggleCommandPalette = { showCommandPalette = !showCommandPalette }
+                    onDispose { onToggleCommandPalette = null }
+                }
+
+                LaunchedEffect(openTabs, activeTabId, drawerState.isOpen, showTerminal, showSettings) {
+                    commandRegistry.clear()
+                    commandRegistry.registerAll(
+                        listOf(
+                            // --- WORKBENCH COMMANDS ---
+                            CommandItem(
+                                id = "workbench.action.toggleSidebar",
+                                title = "View: Toggle Primary Side Bar (Explorer)",
+                                category = "View",
+                                shortcut = "Ctrl+B"
+                            ) {
+                                scope.launch {
+                                    if (drawerState.isClosed) drawerState.open() else drawerState.close()
+                                }
+                            },
+                            CommandItem(
+                                id = "workbench.action.terminal.toggleTerminal",
+                                title = "View: Toggle Terminal",
+                                category = "View",
+                                shortcut = "Ctrl+`"
+                            ) {
+                                viewModel.setShowTerminal(!showTerminal)
+                            },
+                            CommandItem(
+                                id = "workbench.action.openSettings",
+                                title = "Preferences: Open Settings (UI)",
+                                category = "Preferences",
+                                shortcut = "Ctrl+,"
+                            ) {
+                                viewModel.setShowSettings(true)
+                            },
+                            CommandItem(
+                                id = "workbench.action.files.save",
+                                title = "File: Save",
+                                category = "File",
+                                shortcut = "Ctrl+S"
+                            ) {
+                                viewModel.requestSave(context, webView)
+                            },
+                            CommandItem(
+                                id = "workbench.action.files.newFile",
+                                title = "File: New File",
+                                category = "File"
+                            ) {
+                                viewModel.openCreateDialog(isFolder = false)
+                            },
+                            CommandItem(
+                                id = "workbench.action.files.newFolder",
+                                title = "File: New Folder",
+                                category = "File"
+                            ) {
+                                viewModel.openCreateDialog(isFolder = true)
+                            },
+                            CommandItem(
+                                id = "workbench.action.closeActiveEditor",
+                                title = "View: Close Active Tab",
+                                category = "View",
+                                shortcut = "Ctrl+W"
+                            ) {
+                                if (activeTabId.isNotEmpty()) {
+                                    viewModel.closeTab(activeTabId, webView)
+                                }
+                            },
+                            CommandItem(
+                                id = "workbench.action.reloadWindow",
+                                title = "Developer: Reload Window",
+                                category = "Developer"
+                            ) {
+                                viewModel.refreshWorkspace(this@MainActivity)
+                            },
+
+                            // --- MONACO EDITOR COMMANDS ---
+                            CommandItem(
+                                id = "editor.action.formatDocument",
+                                title = "Editor: Format Document",
+                                category = "Editor",
+                                shortcut = "Shift+Alt+F"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.formatDocument")
+                            },
+                            CommandItem(
+                                id = "editor.action.foldAll",
+                                title = "Editor: Fold All",
+                                category = "Editor",
+                                shortcut = "Ctrl+K Ctrl+0"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.foldAll")
+                            },
+                            CommandItem(
+                                id = "editor.action.unfoldAll",
+                                title = "Editor: Unfold All",
+                                category = "Editor",
+                                shortcut = "Ctrl+K Ctrl+J"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.unfoldAll")
+                            },
+                            CommandItem(
+                                id = "editor.action.commentLine",
+                                title = "Editor: Toggle Line Comment",
+                                category = "Editor",
+                                shortcut = "Ctrl+/"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.commentLine")
+                            },
+                            CommandItem(
+                                id = "editor.action.transformToUppercase",
+                                title = "Editor: Transform to Uppercase",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.transformToUppercase")
+                            },
+                            CommandItem(
+                                id = "editor.action.transformToLowercase",
+                                title = "Editor: Transform to Lowercase",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.transformToLowercase")
+                            },
+                            CommandItem(
+                                id = "actions.find",
+                                title = "Editor: Find",
+                                category = "Editor",
+                                shortcut = "Ctrl+F"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "actions.find")
+                            },
+                            CommandItem(
+                                id = "undo",
+                                title = "Editor: Undo",
+                                category = "Editor",
+                                shortcut = "Ctrl+Z"
+                            ) {
+                                MonacoBridge.undo(webView)
+                            },
+                            CommandItem(
+                                id = "redo",
+                                title = "Editor: Redo",
+                                category = "Editor",
+                                shortcut = "Ctrl+Y"
+                            ) {
+                                MonacoBridge.redo(webView)
+                            }
+                        )
+                    )
+                }
 
                 var isCtrlActive by remember { mutableStateOf(false) }
                 var isCtrlLocked by remember { mutableStateOf(false) }
@@ -266,6 +436,9 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onSettingsClick = {
                                         viewModel.setShowSettings(true)
+                                    },
+                                    onSearchClick = {
+                                        showCommandPalette = true
                                     }
                                 )
                                 CrestTabBar(
@@ -436,6 +609,17 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                }
+
+                if (showCommandPalette) {
+                    VSCodeCommandPalette(
+                        commandRegistry = commandRegistry,
+                        onDismiss = { showCommandPalette = false },
+                        onCommandExecute = { cmd ->
+                            showCommandPalette = false
+                            commandRegistry.execute(cmd)
+                        }
+                    )
                 }
             }
         }

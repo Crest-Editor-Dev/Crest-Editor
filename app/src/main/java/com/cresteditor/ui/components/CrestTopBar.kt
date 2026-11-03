@@ -41,17 +41,32 @@ fun CrestTopBar(
             )
         }
 
-        Text(
-            text = projectName,
-            color = CrestTextActive,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Row(
             modifier = Modifier
                 .weight(1f)
+                .height(30.dp)
                 .padding(horizontal = 4.dp)
-        )
+                .background(androidx.compose.ui.graphics.Color(0x1AFFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                .clickable { onSearchClick() }
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
+                tint = CrestTextSecondary,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = projectName,
+                color = CrestTextActive,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
 
         IconButton(onClick = onSaveClick) {
             Icon(
