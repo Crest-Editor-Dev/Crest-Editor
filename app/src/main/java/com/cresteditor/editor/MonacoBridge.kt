@@ -17,6 +17,7 @@ class MonacoBridge(
 
     fun setWebView(wv: WebView?) {
         this.webView = wv
+        activeWebView = java.lang.ref.WeakReference(wv)
     }
 
     @JavascriptInterface
@@ -99,6 +100,10 @@ class MonacoBridge(
     }
 
     companion object {
+        private var activeWebView: java.lang.ref.WeakReference<WebView>? = null
+
+        fun getActiveWebView(): WebView? = activeWebView?.get()
+
         fun openFile(webView: WebView?, path: String, content: String, languageId: String) {
             webView?.let { wv ->
                 wv.post {
@@ -144,7 +149,8 @@ class MonacoBridge(
         }
 
         fun undo(webView: WebView?) {
-            webView?.let { wv ->
+            val target = webView ?: activeWebView?.get()
+            target?.let { wv ->
                 wv.postDelayed({
                     wv.requestFocus()
                     wv.evaluateJavascript("if (window.CrestEditorAPI && window.CrestEditorAPI.undo) { window.CrestEditorAPI.undo(); }", null)
@@ -153,7 +159,8 @@ class MonacoBridge(
         }
 
         fun redo(webView: WebView?) {
-            webView?.let { wv ->
+            val target = webView ?: activeWebView?.get()
+            target?.let { wv ->
                 wv.postDelayed({
                     wv.requestFocus()
                     wv.evaluateJavascript("if (window.CrestEditorAPI && window.CrestEditorAPI.redo) { window.CrestEditorAPI.redo(); }", null)
@@ -162,22 +169,33 @@ class MonacoBridge(
         }
 
         fun triggerAction(webView: WebView?, actionId: String) {
-            webView?.let { wv ->
-                wv.postDelayed({
-                    wv.requestFocus()
-                    val js = "if (window.CrestEditorAPI && window.CrestEditorAPI.triggerAction) { " +
-                            "  window.CrestEditorAPI.triggerAction(" + JSONObject.quote(actionId) + "); " +
-                            "} else if (typeof monaco !== 'undefined') { " +
-                            "  var ed = monaco.editor.getEditors()[0]; " +
-                            "  if (ed) { " +
-                            "    var a = ed.getAction(" + JSONObject.quote(actionId) + "); " +
-                            "    if (a && typeof a._run === 'function') { a._run(); } " +
-                            "    else { ed.focus(); ed.trigger('commandPalette', " + JSONObject.quote(actionId) + ", null); } " +
-                            "  } " +
-                            "}"
-                    wv.evaluateJavascript(js, null)
-                }, 50)
+            val target = webView ?: activeWebView?.get()
+            Log.d("MonacoBridge", "triggerAction requested: actionId=$actionId, targetWebView=$target")
+            if (target == null) {
+                Log.e("MonacoBridge", "triggerAction FAILED: targetWebView is null!")
+                return
             }
+            target.postDelayed({
+                target.requestFocus()
+                val js = "(function() { " +
+                        "  try { " +
+                        "    if (window.CrestEditorAPI && typeof window.CrestEditorAPI.triggerAction === 'function') { " +
+                        "      return window.CrestEditorAPI.triggerAction(" + JSONObject.quote(actionId) + "); " +
+                        "    } else if (typeof monaco !== 'undefined') { " +
+                        "      var ed = monaco.editor.getEditors()[0]; " +
+                        "      if (ed) { " +
+                        "        var a = ed.getAction(" + JSONObject.quote(actionId) + "); " +
+                        "        if (a && typeof a._run === 'function') { a._run(); return 'action._run'; } " +
+                        "        ed.focus(); ed.trigger('commandPalette', " + JSONObject.quote(actionId) + ", null); return 'ed.trigger'; " +
+                        "      } " +
+                        "    } " +
+                        "  } catch(e) { return 'ERR:' + e; } " +
+                        "  return 'NOT_FOUND'; " +
+                        "})();"
+                target.evaluateJavascript(js) { res ->
+                    Log.d("MonacoBridge", "triggerAction JS result: $res for action: $actionId")
+                }
+            }, 50)
         }
 
         fun handleKey(webView: WebView?, key: String) {

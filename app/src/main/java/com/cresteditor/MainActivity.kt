@@ -61,6 +61,15 @@ class MainActivity : ComponentActivity() {
         return super.dispatchKeyEvent(event)
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        webView?.let {
+            it.stopLoading()
+            it.destroy()
+        }
+        webView = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -759,23 +768,7 @@ class MainActivity : ComponentActivity() {
                                 .fillMaxSize()
                                 .padding(innerPadding)
                         ) {
-                            if (showTerminal) {
-                                TerminalScreen(
-                                    onClose = {
-                                        viewModel.setShowTerminal(false)
-                                    },
-                                    initialPath = workspaceDir.absolutePath,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else if (showSettings) {
-                                SettingsScreen(
-                                    settingsManager = settingsManager,
-                                    onClose = {
-                                        viewModel.setShowSettings(false)
-                                    },
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
+                            Box(modifier = Modifier.fillMaxSize()) {
                                 CrestEditorScreen(
                                     onWebViewCreated = { wv ->
                                         webView = wv
@@ -786,35 +779,53 @@ class MainActivity : ComponentActivity() {
                                     },
                                     bridge = monacoBridge
                                 )
-                            }
 
-                            if (!showTerminal && !showSettings && openTabs.isEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(CrestBackground),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(
-                                            imageVector = Icons.Default.Code,
-                                            contentDescription = null,
-                                            tint = CrestTextSecondary,
-                                            modifier = Modifier.size(48.dp)
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Text(
-                                            text = "No Open Files",
-                                            color = CrestTextSecondary,
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = "Select a file from the menu drawer to start editing",
-                                            color = CrestTextSecondary.copy(alpha = 0.7f),
-                                            fontSize = 12.sp
-                                        )
+                                if (showTerminal) {
+                                    TerminalScreen(
+                                        onClose = {
+                                            viewModel.setShowTerminal(false)
+                                        },
+                                        initialPath = workspaceDir.absolutePath,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else if (showSettings) {
+                                    SettingsScreen(
+                                        settingsManager = settingsManager,
+                                        onClose = {
+                                            viewModel.setShowSettings(false)
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+
+                                if (!showTerminal && !showSettings && openTabs.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(CrestBackground),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(
+                                                imageVector = Icons.Default.Code,
+                                                contentDescription = null,
+                                                tint = CrestTextSecondary,
+                                                modifier = Modifier.size(48.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Text(
+                                                text = "No Open Files",
+                                                color = CrestTextSecondary,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "Select a file from the menu drawer to start editing",
+                                                color = CrestTextSecondary.copy(alpha = 0.7f),
+                                                fontSize = 12.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -846,6 +857,7 @@ fun CrestEditorScreen(
     val context = LocalContext.current
     val webView = remember {
         WebView(context).apply {
+            WebView.setWebContentsDebuggingEnabled(true)
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -905,7 +917,6 @@ fun CrestEditorScreen(
     DisposableEffect(Unit) {
         onDispose {
             webView.stopLoading()
-            webView.destroy()
         }
     }
 
