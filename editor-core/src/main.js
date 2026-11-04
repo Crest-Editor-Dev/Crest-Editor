@@ -315,14 +315,83 @@ import './styles.css';
       };
     },
     undo: function() {
-      if (editor) editor.trigger('keyboard', 'undo', null);
+      if (editor) {
+        try { editor.focus(); } catch (e) {}
+        const model = editor.getModel();
+        if (model && typeof model.undo === 'function') {
+          model.undo();
+        } else {
+          editor.trigger('keyboard', 'undo', null);
+        }
+      }
     },
     redo: function() {
-      if (editor) editor.trigger('keyboard', 'redo', null);
+      if (editor) {
+        try { editor.focus(); } catch (e) {}
+        const model = editor.getModel();
+        if (model && typeof model.redo === 'function') {
+          model.redo();
+        } else {
+          editor.trigger('keyboard', 'redo', null);
+        }
+      }
     },
     paste: function() {
       if (typeof window.pasteClipboard === 'function') {
         window.pasteClipboard();
+      }
+    },
+    triggerAction: function(actionId) {
+      console.log('[Crest Monaco] triggerAction called with:', actionId);
+      if (!editor) return 'NO_EDITOR';
+      try { editor.focus(); } catch (e) {}
+
+      // Try normalized action IDs (e.g. editor.action.foldAll <-> editor.foldAll)
+      let act = editor.getAction ? editor.getAction(actionId) : null;
+      if (!act && typeof actionId.startsWith === 'function') {
+        if (actionId.startsWith('editor.action.')) {
+          act = editor.getAction(actionId.replace('editor.action.', 'editor.'));
+        } else if (actionId.startsWith('editor.')) {
+          act = editor.getAction(actionId.replace('editor.', 'editor.action.'));
+        }
+      }
+
+      if (act) {
+        if (typeof act._run === 'function') {
+          try {
+            console.log('[Crest Monaco] executing act._run() for:', act.id);
+            act._run();
+            return 'RUN_OK';
+          } catch (e) {
+            console.error('[Crest Monaco] act._run error:', e);
+            return 'RUN_ERR:' + e;
+          }
+        } else if (typeof act.run === 'function') {
+          try {
+            console.log('[Crest Monaco] executing act.run() for:', act.id);
+            act.run();
+            return 'RUN_PROMISE';
+          } catch (e) {
+            console.error('[Crest Monaco] act.run error:', e);
+            return 'RUN_ERR:' + e;
+          }
+        }
+      }
+
+      if (editor._commandService && typeof editor._commandService.executeCommand === 'function') {
+        try {
+          console.log('[Crest Monaco] executing commandService for:', actionId);
+          editor._commandService.executeCommand(actionId);
+          return 'CMD_OK';
+        } catch (e) {}
+      }
+
+      try {
+        console.log('[Crest Monaco] triggering commandPalette for:', actionId);
+        editor.trigger('commandPalette', actionId, null);
+        return 'TRIGGER_OK';
+      } catch (e) {
+        return 'TRIGGER_ERR:' + e;
       }
     },
     handleKey: function(key) {
