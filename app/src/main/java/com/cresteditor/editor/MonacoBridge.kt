@@ -10,13 +10,53 @@ class MonacoBridge(
     private val context: android.content.Context? = null,
     private var onReadyCallback: (() -> Unit)? = null,
     private var onContentChangedCallback: ((versionId: Int) -> Unit)? = null,
-    private var onSaveRequestedCallback: ((content: String) -> Unit)? = null
+    private var onSaveRequestedCallback: ((content: String) -> Unit)? = null,
+    private var onActionsLoadedCallback: ((List<Pair<String, String>>) -> Unit)? = null,
+    private var onOpenCommandPaletteCallback: (() -> Unit)? = null
 ) {
     private val TAG = "MonacoBridge"
     private var webView: WebView? = null
 
     fun setWebView(wv: WebView?) {
         this.webView = wv
+    }
+
+    fun setActionsLoadedCallback(callback: ((List<Pair<String, String>>) -> Unit)?) {
+        this.onActionsLoadedCallback = callback
+    }
+
+    fun setOpenCommandPaletteCallback(callback: (() -> Unit)?) {
+        this.onOpenCommandPaletteCallback = callback
+    }
+
+    @JavascriptInterface
+    fun onEditorActionsLoaded(actionsJson: String) {
+        Log.i(TAG, "Monaco actions loaded length: ${actionsJson.length}")
+        try {
+            val arr = org.json.JSONArray(actionsJson)
+            val list = mutableListOf<Pair<String, String>>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val id = obj.optString("id", "")
+                val label = obj.optString("label", "")
+                if (id.isNotEmpty() && label.isNotEmpty()) {
+                    list.add(Pair(id, label))
+                }
+            }
+            webView?.post {
+                onActionsLoadedCallback?.invoke(list)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing actionsJson: ${e.message}")
+        }
+    }
+
+    @JavascriptInterface
+    fun openCommandPalette() {
+        Log.i(TAG, "Monaco requested Open Command Palette (F1)")
+        webView?.post {
+            onOpenCommandPaletteCallback?.invoke()
+        }
     }
 
     @JavascriptInterface
@@ -159,6 +199,20 @@ class MonacoBridge(
                             "} else if (typeof monaco !== 'undefined') { " +
                             "  var ed = monaco.editor.getEditors()[0]; " +
                             "  if (ed) { ed.focus(); ed.trigger('commandPalette', " + JSONObject.quote(actionId) + ", null); } " +
+                            "}"
+                    wv.evaluateJavascript(js, null)
+                }
+            }
+        }
+
+        fun requestSupportedActions(webView: WebView?) {
+            webView?.let { wv ->
+                wv.post {
+                    val js = "if (window.CrestEditorAPI && window.CrestEditorAPI.getSupportedActions) { " +
+                            "  var acts = window.CrestEditorAPI.getSupportedActions(); " +
+                            "  if (window.CrestAndroidBridge && window.CrestAndroidBridge.onEditorActionsLoaded) { " +
+                            "    window.CrestAndroidBridge.onEditorActionsLoaded(JSON.stringify(acts)); " +
+                            "  } " +
                             "}"
                     wv.evaluateJavascript(js, null)
                 }

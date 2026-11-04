@@ -83,13 +83,14 @@ class MainActivity : ComponentActivity() {
 
                 var showCommandPalette by remember { mutableStateOf(false) }
                 val commandRegistry = remember { CommandRegistry() }
+                var monacoActions by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
 
                 DisposableEffect(Unit) {
                     onToggleCommandPalette = { showCommandPalette = !showCommandPalette }
                     onDispose { onToggleCommandPalette = null }
                 }
 
-                LaunchedEffect(openTabs, activeTabId, drawerState.isOpen, showTerminal, showSettings) {
+                LaunchedEffect(openTabs, activeTabId, drawerState.isOpen, showTerminal, showSettings, monacoActions) {
                     commandRegistry.clear()
                     commandRegistry.registerAll(
                         listOf(
@@ -160,7 +161,7 @@ class MainActivity : ComponentActivity() {
                                 viewModel.refreshWorkspace(this@MainActivity)
                             },
 
-                            // --- MONACO EDITOR COMMANDS ---
+                            // --- COMMON EDITOR SHORTCUTS ---
                             CommandItem(
                                 id = "editor.action.formatDocument",
                                 title = "Editor: Format Document",
@@ -170,42 +171,12 @@ class MainActivity : ComponentActivity() {
                                 MonacoBridge.triggerAction(webView, "editor.action.formatDocument")
                             },
                             CommandItem(
-                                id = "editor.action.foldAll",
-                                title = "Editor: Fold All",
-                                category = "Editor",
-                                shortcut = "Ctrl+K Ctrl+0"
-                            ) {
-                                MonacoBridge.triggerAction(webView, "editor.foldAll")
-                            },
-                            CommandItem(
-                                id = "editor.action.unfoldAll",
-                                title = "Editor: Unfold All",
-                                category = "Editor",
-                                shortcut = "Ctrl+K Ctrl+J"
-                            ) {
-                                MonacoBridge.triggerAction(webView, "editor.unfoldAll")
-                            },
-                            CommandItem(
                                 id = "editor.action.commentLine",
                                 title = "Editor: Toggle Line Comment",
                                 category = "Editor",
                                 shortcut = "Ctrl+/"
                             ) {
                                 MonacoBridge.triggerAction(webView, "editor.action.commentLine")
-                            },
-                            CommandItem(
-                                id = "editor.action.transformToUppercase",
-                                title = "Editor: Transform to Uppercase",
-                                category = "Editor"
-                            ) {
-                                MonacoBridge.triggerAction(webView, "editor.action.transformToUppercase")
-                            },
-                            CommandItem(
-                                id = "editor.action.transformToLowercase",
-                                title = "Editor: Transform to Lowercase",
-                                category = "Editor"
-                            ) {
-                                MonacoBridge.triggerAction(webView, "editor.action.transformToLowercase")
                             },
                             CommandItem(
                                 id = "actions.find",
@@ -233,6 +204,19 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     )
+
+                    // Dynamically register all 150+ actions exported from Monaco!
+                    monacoActions.forEach { (id, label) ->
+                        commandRegistry.register(
+                            CommandItem(
+                                id = id,
+                                title = "Editor: $label",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, id)
+                            }
+                        )
+                    }
                 }
 
                 var isCtrlActive by remember { mutableStateOf(false) }
@@ -263,6 +247,7 @@ class MainActivity : ComponentActivity() {
                         context = context.applicationContext,
                         onReadyCallback = {
                             MonacoBridge.applySettings(webView, settingsManager.getSettingsJsonObject())
+                            MonacoBridge.requestSupportedActions(webView)
                             val activePath = viewModel.activeTabId.value
                             if (activePath.isNotEmpty()) {
                                 viewModel.openFile(File(activePath), webView)
@@ -281,6 +266,12 @@ class MainActivity : ComponentActivity() {
                             if (activePath.isNotEmpty()) {
                                 viewModel.saveContent(context, activePath, content)
                             }
+                        },
+                        onActionsLoadedCallback = { actions ->
+                            monacoActions = actions
+                        },
+                        onOpenCommandPaletteCallback = {
+                            showCommandPalette = true
                         }
                     )
                 }
