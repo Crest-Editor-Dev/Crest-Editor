@@ -93,7 +93,45 @@ class MainActivity : ComponentActivity() {
                     commandRegistry.clear()
                     commandRegistry.registerAll(
                         listOf(
-                            // --- WORKBENCH COMMANDS ---
+                            // -------------------------------------------------
+                            // 1. FILE COMMANDS
+                            // -------------------------------------------------
+                            CommandItem(
+                                id = "workbench.action.files.save",
+                                title = "File: Save",
+                                category = "File",
+                                shortcut = "Ctrl+S"
+                            ) {
+                                viewModel.requestSave(context, webView)
+                            },
+                            CommandItem(
+                                id = "workbench.action.files.newFile",
+                                title = "File: New File",
+                                category = "File"
+                            ) {
+                                viewModel.openCreateDialog(isFolder = false)
+                            },
+                            CommandItem(
+                                id = "workbench.action.files.newFolder",
+                                title = "File: New Folder",
+                                category = "File"
+                            ) {
+                                viewModel.openCreateDialog(isFolder = true)
+                            },
+                            CommandItem(
+                                id = "workbench.action.closeActiveEditor",
+                                title = "File: Close Active Tab",
+                                category = "File",
+                                shortcut = "Ctrl+W"
+                            ) {
+                                if (activeTabId.isNotEmpty()) {
+                                    viewModel.closeTab(activeTabId, webView)
+                                }
+                            },
+
+                            // -------------------------------------------------
+                            // 2. VIEW / WORKBENCH COMMANDS
+                            // -------------------------------------------------
                             CommandItem(
                                 id = "workbench.action.toggleSidebar",
                                 title = "View: Toggle Primary Side Bar (Explorer)",
@@ -121,38 +159,6 @@ class MainActivity : ComponentActivity() {
                                 viewModel.setShowSettings(true)
                             },
                             CommandItem(
-                                id = "workbench.action.files.save",
-                                title = "File: Save",
-                                category = "File",
-                                shortcut = "Ctrl+S"
-                            ) {
-                                viewModel.requestSave(context, webView)
-                            },
-                            CommandItem(
-                                id = "workbench.action.files.newFile",
-                                title = "File: New File",
-                                category = "File"
-                            ) {
-                                viewModel.openCreateDialog(isFolder = false)
-                            },
-                            CommandItem(
-                                id = "workbench.action.files.newFolder",
-                                title = "File: New Folder",
-                                category = "File"
-                            ) {
-                                viewModel.openCreateDialog(isFolder = true)
-                            },
-                            CommandItem(
-                                id = "workbench.action.closeActiveEditor",
-                                title = "View: Close Active Tab",
-                                category = "View",
-                                shortcut = "Ctrl+W"
-                            ) {
-                                if (activeTabId.isNotEmpty()) {
-                                    viewModel.closeTab(activeTabId, webView)
-                                }
-                            },
-                            CommandItem(
                                 id = "workbench.action.reloadWindow",
                                 title = "Developer: Reload Window",
                                 category = "Developer"
@@ -160,7 +166,9 @@ class MainActivity : ComponentActivity() {
                                 viewModel.refreshWorkspace(this@MainActivity)
                             },
 
-                            // --- MONACO EDITOR COMMANDS ---
+                            // -------------------------------------------------
+                            // 3. CODE FORMATTING & COMMENTS
+                            // -------------------------------------------------
                             CommandItem(
                                 id = "editor.action.formatDocument",
                                 title = "Editor: Format Document",
@@ -168,6 +176,238 @@ class MainActivity : ComponentActivity() {
                                 shortcut = "Shift+Alt+F"
                             ) {
                                 MonacoBridge.triggerAction(webView, "editor.action.formatDocument")
+                            },
+                            CommandItem(
+                                id = "editor.action.formatSelection",
+                                title = "Editor: Format Selection",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.formatSelection")
+                            },
+                            CommandItem(
+                                id = "editor.action.commentLine",
+                                title = "Editor: Toggle Line Comment",
+                                category = "Editor",
+                                shortcut = "Ctrl+/"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.commentLine")
+                            },
+                            CommandItem(
+                                id = "editor.action.blockComment",
+                                title = "Editor: Toggle Block Comment",
+                                category = "Editor",
+                                shortcut = "Shift+Alt+A"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.blockComment")
+                            },
+                            CommandItem(
+                                id = "editor.action.indentLines",
+                                title = "Editor: Indent Line",
+                                category = "Editor",
+                                shortcut = "Ctrl+]"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.indentLines")
+                            },
+                            CommandItem(
+                                id = "editor.action.outdentLines",
+                                title = "Editor: Outdent Line",
+                                category = "Editor",
+                                shortcut = "Ctrl+["
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.outdentLines")
+                            },
+
+                            // -------------------------------------------------
+                            // 4. LINE EDITING & MANIPULATION
+                            // -------------------------------------------------
+                            CommandItem(
+                                id = "editor.action.copyLinesDownAction",
+                                title = "Editor: Duplicate Line Down",
+                                category = "Editor",
+                                shortcut = "Shift+Alt+Down"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.copyLinesDownAction")
+                            },
+                            CommandItem(
+                                id = "editor.action.copyLinesUpAction",
+                                title = "Editor: Duplicate Line Up",
+                                category = "Editor",
+                                shortcut = "Shift+Alt+Up"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.copyLinesUpAction")
+                            },
+                            CommandItem(
+                                id = "editor.action.moveLinesDownAction",
+                                title = "Editor: Move Line Down",
+                                category = "Editor",
+                                shortcut = "Alt+Down"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.moveLinesDownAction")
+                            },
+                            CommandItem(
+                                id = "editor.action.moveLinesUpAction",
+                                title = "Editor: Move Line Up",
+                                category = "Editor",
+                                shortcut = "Alt+Up"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.moveLinesUpAction")
+                            },
+                            CommandItem(
+                                id = "editor.action.deleteLines",
+                                title = "Editor: Delete Line",
+                                category = "Editor",
+                                shortcut = "Ctrl+Shift+K"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.deleteLines")
+                            },
+                            CommandItem(
+                                id = "editor.action.insertLineAfter",
+                                title = "Editor: Insert Line Below",
+                                category = "Editor",
+                                shortcut = "Ctrl+Enter"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.insertLineAfter")
+                            },
+                            CommandItem(
+                                id = "editor.action.insertLineBefore",
+                                title = "Editor: Insert Line Above",
+                                category = "Editor",
+                                shortcut = "Ctrl+Shift+Enter"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.insertLineBefore")
+                            },
+                            CommandItem(
+                                id = "editor.action.joinLines",
+                                title = "Editor: Join Lines",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.joinLines")
+                            },
+                            CommandItem(
+                                id = "editor.action.removeDuplicateLines",
+                                title = "Editor: Delete Duplicate Lines",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.removeDuplicateLines")
+                            },
+                            CommandItem(
+                                id = "editor.action.trimTrailingWhitespace",
+                                title = "Editor: Trim Trailing Whitespace",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.trimTrailingWhitespace")
+                            },
+                            CommandItem(
+                                id = "editor.action.sortLinesAscending",
+                                title = "Editor: Sort Lines Ascending",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.sortLinesAscending")
+                            },
+                            CommandItem(
+                                id = "editor.action.sortLinesDescending",
+                                title = "Editor: Sort Lines Descending",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.sortLinesDescending")
+                            },
+
+                            // -------------------------------------------------
+                            // 5. TEXT & CASE TRANSFORMATIONS
+                            // -------------------------------------------------
+                            CommandItem(
+                                id = "editor.action.transformToUppercase",
+                                title = "Editor: Transform to Uppercase",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.transformToUppercase")
+                            },
+                            CommandItem(
+                                id = "editor.action.transformToLowercase",
+                                title = "Editor: Transform to Lowercase",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.transformToLowercase")
+                            },
+                            CommandItem(
+                                id = "editor.action.transformToTitlecase",
+                                title = "Editor: Transform to Title Case",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.transformToTitlecase")
+                            },
+                            CommandItem(
+                                id = "editor.action.transformToCamelcase",
+                                title = "Editor: Transform to Camel Case",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.transformToCamelcase")
+                            },
+                            CommandItem(
+                                id = "editor.action.transformToSnakecase",
+                                title = "Editor: Transform to Snake Case",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.transformToSnakecase")
+                            },
+                            CommandItem(
+                                id = "editor.action.transformToKebabcase",
+                                title = "Editor: Transform to Kebab Case",
+                                category = "Editor"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.transformToKebabcase")
+                            },
+
+                            // -------------------------------------------------
+                            // 6. SEARCH, NAVIGATION, MULTI-CURSOR & FOLDING
+                            // -------------------------------------------------
+                            CommandItem(
+                                id = "actions.find",
+                                title = "Editor: Find",
+                                category = "Editor",
+                                shortcut = "Ctrl+F"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "actions.find")
+                            },
+                            CommandItem(
+                                id = "editor.action.selectAll",
+                                title = "Editor: Select All",
+                                category = "Editor",
+                                shortcut = "Ctrl+A"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.selectAll")
+                            },
+                            CommandItem(
+                                id = "editor.action.addSelectionToNextFindMatch",
+                                title = "Editor: Add Selection to Next Match",
+                                category = "Editor",
+                                shortcut = "Ctrl+D"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.addSelectionToNextFindMatch")
+                            },
+                            CommandItem(
+                                id = "editor.action.changeAll",
+                                title = "Editor: Change All Occurrences",
+                                category = "Editor",
+                                shortcut = "Ctrl+F2"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.changeAll")
+                            },
+                            CommandItem(
+                                id = "editor.action.gotoLine",
+                                title = "Editor: Go to Line...",
+                                category = "Editor",
+                                shortcut = "Ctrl+G"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.gotoLine")
+                            },
+                            CommandItem(
+                                id = "editor.action.jumpToBracket",
+                                title = "Editor: Go to Matching Bracket",
+                                category = "Editor",
+                                shortcut = "Ctrl+Shift+\\"
+                            ) {
+                                MonacoBridge.triggerAction(webView, "editor.action.jumpToBracket")
                             },
                             CommandItem(
                                 id = "editor.action.foldAll",
@@ -184,36 +424,6 @@ class MainActivity : ComponentActivity() {
                                 shortcut = "Ctrl+K Ctrl+J"
                             ) {
                                 MonacoBridge.triggerAction(webView, "editor.unfoldAll")
-                            },
-                            CommandItem(
-                                id = "editor.action.commentLine",
-                                title = "Editor: Toggle Line Comment",
-                                category = "Editor",
-                                shortcut = "Ctrl+/"
-                            ) {
-                                MonacoBridge.triggerAction(webView, "editor.action.commentLine")
-                            },
-                            CommandItem(
-                                id = "editor.action.transformToUppercase",
-                                title = "Editor: Transform to Uppercase",
-                                category = "Editor"
-                            ) {
-                                MonacoBridge.triggerAction(webView, "editor.action.transformToUppercase")
-                            },
-                            CommandItem(
-                                id = "editor.action.transformToLowercase",
-                                title = "Editor: Transform to Lowercase",
-                                category = "Editor"
-                            ) {
-                                MonacoBridge.triggerAction(webView, "editor.action.transformToLowercase")
-                            },
-                            CommandItem(
-                                id = "actions.find",
-                                title = "Editor: Find",
-                                category = "Editor",
-                                shortcut = "Ctrl+F"
-                            ) {
-                                MonacoBridge.triggerAction(webView, "actions.find")
                             },
                             CommandItem(
                                 id = "undo",
