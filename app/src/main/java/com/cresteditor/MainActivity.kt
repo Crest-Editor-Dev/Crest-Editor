@@ -124,8 +124,9 @@ class MainActivity : ComponentActivity() {
                                 category = "File",
                                 shortcut = "Ctrl+W"
                             ) {
-                                if (activeTabId.isNotEmpty()) {
-                                    viewModel.closeTab(activeTabId, webView)
+                                val currentTab = viewModel.activeTabId.value
+                                if (currentTab.isNotEmpty()) {
+                                    viewModel.closeTab(currentTab, webView)
                                 }
                             },
 
@@ -148,7 +149,7 @@ class MainActivity : ComponentActivity() {
                                 category = "View",
                                 shortcut = "Ctrl+`"
                             ) {
-                                viewModel.setShowTerminal(!showTerminal)
+                                viewModel.setShowTerminal(!viewModel.showTerminal.value)
                             },
                             CommandItem(
                                 id = "workbench.action.openSettings",

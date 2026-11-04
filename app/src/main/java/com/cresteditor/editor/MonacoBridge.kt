@@ -144,24 +144,39 @@ class MonacoBridge(
         }
 
         fun undo(webView: WebView?) {
-            webView?.evaluateJavascript("if (window.CrestEditorAPI && window.CrestEditorAPI.undo) { window.CrestEditorAPI.undo(); }", null)
+            webView?.let { wv ->
+                wv.postDelayed({
+                    wv.requestFocus()
+                    wv.evaluateJavascript("if (window.CrestEditorAPI && window.CrestEditorAPI.undo) { window.CrestEditorAPI.undo(); }", null)
+                }, 50)
+            }
         }
 
         fun redo(webView: WebView?) {
-            webView?.evaluateJavascript("if (window.CrestEditorAPI && window.CrestEditorAPI.redo) { window.CrestEditorAPI.redo(); }", null)
+            webView?.let { wv ->
+                wv.postDelayed({
+                    wv.requestFocus()
+                    wv.evaluateJavascript("if (window.CrestEditorAPI && window.CrestEditorAPI.redo) { window.CrestEditorAPI.redo(); }", null)
+                }, 50)
+            }
         }
 
         fun triggerAction(webView: WebView?, actionId: String) {
             webView?.let { wv ->
-                wv.post {
+                wv.postDelayed({
+                    wv.requestFocus()
                     val js = "if (window.CrestEditorAPI && window.CrestEditorAPI.triggerAction) { " +
                             "  window.CrestEditorAPI.triggerAction(" + JSONObject.quote(actionId) + "); " +
                             "} else if (typeof monaco !== 'undefined') { " +
                             "  var ed = monaco.editor.getEditors()[0]; " +
-                            "  if (ed) { ed.focus(); ed.trigger('commandPalette', " + JSONObject.quote(actionId) + ", null); } " +
+                            "  if (ed) { " +
+                            "    var a = ed.getAction(" + JSONObject.quote(actionId) + "); " +
+                            "    if (a && typeof a._run === 'function') { a._run(); } " +
+                            "    else { ed.focus(); ed.trigger('commandPalette', " + JSONObject.quote(actionId) + ", null); } " +
+                            "  } " +
                             "}"
                     wv.evaluateJavascript(js, null)
-                }
+                }, 50)
             }
         }
 
