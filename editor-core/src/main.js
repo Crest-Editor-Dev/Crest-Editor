@@ -85,6 +85,18 @@ import { shikiToMonaco } from '@shikijs/monaco';
 
       const activeTheme = resolveTheme(currentSettings['editor.theme']);
       shikiToMonaco(shikiHighlighter, monaco);
+
+      // Fix HTML bracket colorization: remove < and > as bracket pairs so <!DOCTYPE> and tags never show unexpected bracket errors (matching official VS Code behavior)
+      try {
+        monaco.languages.setLanguageConfiguration('html', {
+          brackets: [
+            ['<!--', '-->'],
+            ['{', '}'],
+            ['(', ')']
+          ],
+          colorizedBracketPairs: []
+        });
+      } catch (_) {}
       monaco.editor.setTheme(activeTheme);
       console.log('[Crest Shiki] Successfully registered grammar for:', langId);
     } catch (e) {
@@ -114,6 +126,18 @@ import { shikiToMonaco } from '@shikijs/monaco';
       }
 
       shikiToMonaco(shikiHighlighter, monaco);
+
+      // Fix HTML bracket colorization: remove < and > as bracket pairs so <!DOCTYPE> and tags never show unexpected bracket errors (matching official VS Code behavior)
+      try {
+        monaco.languages.setLanguageConfiguration('html', {
+          brackets: [
+            ['<!--', '-->'],
+            ['{', '}'],
+            ['(', ')']
+          ],
+          colorizedBracketPairs: []
+        });
+      } catch (_) {}
 
       const desiredTheme = currentSettings['editor.theme'] || 'vs-dark';
       applyShikiTheme(desiredTheme);

@@ -33,10 +33,11 @@ export const conf: languages.LanguageConfiguration = {
 
 	brackets: [
 		['<!--', '-->'],
-		['<', '>'],
 		['{', '}'],
 		['(', ')']
 	],
+
+	colorizedBracketPairs: [],
 
 	autoClosingPairs: [
 		{ open: '{', close: '}' },
