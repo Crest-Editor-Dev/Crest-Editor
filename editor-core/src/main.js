@@ -1,6 +1,8 @@
 import * as monaco from './core/vs/editor/editor.main.js';
 import './languages/definitions/register.all.ts';
 import './styles.css';
+import { createHighlighter } from 'shiki';
+import { shikiToMonaco } from '@shikijs/monaco';
 
 (function() {
   'use strict';
@@ -47,6 +49,84 @@ import './styles.css';
   let isReady = false;
   let autoSaveTimer = null;
   let isContentDirty = false;
+  let shikiHighlighter = null;
+  const loadedShikiLanguages = new Set();
+
+  function resolveTheme(themeName) {
+    if (!themeName) return 'dark-plus';
+    if (themeName === 'vs-dark') return 'dark-plus';
+    if (themeName === 'vs' || themeName === 'vs-light') return 'light-plus';
+    return themeName;
+  }
+
+  function applyShikiTheme(themeName) {
+    const resolved = resolveTheme(themeName);
+    try {
+      monaco.editor.setTheme(resolved);
+    } catch (e) {
+      console.warn('[Crest Shiki] Could not set theme', resolved, e);
+      try { monaco.editor.setTheme('vs-dark'); } catch (_) {}
+    }
+  }
+
+  async function ensureLanguageLoaded(langId) {
+    if (!langId || !shikiHighlighter) return;
+    if (loadedShikiLanguages.has(langId)) return;
+
+    try {
+      console.log('[Crest Shiki] Dynamically loading language grammar:', langId);
+      await shikiHighlighter.loadLanguage(langId);
+      loadedShikiLanguages.add(langId);
+
+      const existingLangs = new Set(monaco.languages.getLanguages().map(l => l.id));
+      if (!existingLangs.has(langId)) {
+        monaco.languages.register({ id: langId });
+      }
+
+      const activeTheme = resolveTheme(currentSettings['editor.theme']);
+      shikiToMonaco(shikiHighlighter, monaco);
+      monaco.editor.setTheme(activeTheme);
+      console.log('[Crest Shiki] Successfully registered grammar for:', langId);
+    } catch (e) {
+      console.warn('[Crest Shiki] Language grammar failed to load or not bundled:', langId, e);
+    }
+  }
+
+  async function initShiki() {
+    try {
+      console.log('[Crest Shiki] Initializing TextMate syntax engine...');
+      shikiHighlighter = await createHighlighter({
+        themes: ['dark-plus', 'light-plus', 'github-dark', 'one-dark-pro', 'dracula'],
+        langs: [
+          'javascript', 'typescript', 'python', 'kotlin', 'java',
+          'c', 'cpp', 'rust', 'go', 'html', 'css', 'json',
+          'yaml', 'shellscript', 'markdown', 'sql', 'xml'
+        ]
+      });
+
+      const existingLangs = new Set(monaco.languages.getLanguages().map(l => l.id));
+      for (const lang of shikiHighlighter.getLoadedLanguages()) {
+        loadedShikiLanguages.add(lang);
+        if (!existingLangs.has(lang)) {
+          monaco.languages.register({ id: lang });
+          existingLangs.add(lang);
+        }
+      }
+
+      shikiToMonaco(shikiHighlighter, monaco);
+
+      const desiredTheme = currentSettings['editor.theme'] || 'vs-dark';
+      applyShikiTheme(desiredTheme);
+
+      if (footerStatusText) {
+        footerStatusText.textContent = 'Crest Mobile • TextMate Active';
+      }
+
+      console.log('[Crest Shiki] TextMate engine successfully loaded with', shikiHighlighter.getLoadedLanguages().length, 'grammars!');
+    } catch (err) {
+      console.error('[Crest Shiki] Failed to initialize TextMate engine, fallback to Monaco Monarch:', err);
+    }
+  }
 
   // Settings & VS Code-style AutoSave Engine
   const currentSettings = {
@@ -191,6 +271,9 @@ import './styles.css';
 
     console.log('[Crest Engine] Monaco successfully initialized from in-tree source!');
 
+    // Initialize Shiki TextMate syntax engine in background
+    initShiki();
+
   } catch (error) {
     console.error('[Crest Engine] Initialization error:', error);
     if (statusPill) {
@@ -214,7 +297,7 @@ import './styles.css';
     btnTheme.addEventListener('click', function() {
       if (!editor) return;
       isDarkMode = !isDarkMode;
-      monaco.editor.setTheme(isDarkMode ? 'vs-dark' : 'vs');
+      applyShikiTheme(isDarkMode ? 'dark-plus' : 'light-plus');
       btnTheme.textContent = isDarkMode ? '🌙' : '☀️';
     });
   }
@@ -262,6 +345,11 @@ import './styles.css';
       if (!editor) return false;
       isContentDirty = false;
       if (autoSaveTimer) clearTimeout(autoSaveTimer);
+
+      if (languageId && shikiHighlighter && !loadedShikiLanguages.has(languageId)) {
+        ensureLanguageLoaded(languageId).catch(console.error);
+      }
+
       try {
         const uri = monaco.Uri.file(filePath);
         let model = monaco.editor.getModel(uri);
@@ -298,10 +386,19 @@ import './styles.css';
         editor.updateOptions(options);
 
         if ('editor.theme' in settings) {
-          monaco.editor.setTheme(settings['editor.theme']);
+          applyShikiTheme(settings['editor.theme']);
         }
       }
       console.log('[Crest Monaco] Applied settings successfully:', settings);
+    },
+    loadLanguage: function(langId) {
+      return ensureLanguageLoaded(langId);
+    },
+    getLoadedLanguages: function() {
+      return shikiHighlighter ? shikiHighlighter.getLoadedLanguages() : [];
+    },
+    getLoadedThemes: function() {
+      return shikiHighlighter ? shikiHighlighter.getLoadedThemes() : [];
     },
     getEditorStats: function() {
       if (!editor) return null;
