@@ -1,16 +1,35 @@
 import * as monaco from './core/vs/editor/editor.main.js';
 import './languages/definitions/register.all.ts';
+import './languages/features/register.all.ts';
 import './styles.css';
 import { createHighlighter } from 'shiki';
 import { shikiToMonaco } from '@shikijs/monaco';
 
+import EditorWorker from './editor.worker?worker&inline';
+import HtmlWorker from './languages/features/html/html.worker?worker&inline';
+import CssWorker from './languages/features/css/css.worker?worker&inline';
+import JsonWorker from './languages/features/json/json.worker?worker&inline';
+import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
+
 (function() {
   'use strict';
 
-  // Configure Monaco Environment worker fallback for Android WebView
+  // Configure Monaco Environment with inlined Blob Workers for Android WebView
   window.MonacoEnvironment = {
-    getWorkerUrl: function (moduleId, label) {
-      return 'data:text/javascript;charset=utf-8,' + encodeURIComponent('self.onmessage = function() {};');
+    getWorker: function (moduleId, label) {
+      if (label === 'json') {
+        return new JsonWorker();
+      }
+      if (label === 'css' || label === 'scss' || label === 'less') {
+        return new CssWorker();
+      }
+      if (label === 'html' || label === 'handlebars' || label === 'razor') {
+        return new HtmlWorker();
+      }
+      if (label === 'typescript' || label === 'javascript') {
+        return new TsWorker();
+      }
+      return new EditorWorker();
     }
   };
 
@@ -228,7 +247,16 @@ import { shikiToMonaco } from '@shikijs/monaco';
       scrollBeyondLastLine: false,
       smoothScrolling: true,
       contextmenu: false,
-      quickSuggestions: true,
+      quickSuggestions: {
+        other: true,
+        comments: false,
+        strings: true
+      },
+      suggestOnTriggerCharacters: true,
+      acceptSuggestionOnEnter: 'on',
+      tabCompletion: 'on',
+      wordBasedSuggestions: 'currentDocument',
+      fixedOverflowWidgets: true,
       cursorBlinking: 'smooth',
       editContext: false
     });

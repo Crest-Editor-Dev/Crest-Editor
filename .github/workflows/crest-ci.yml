@@ -40,6 +40,8 @@ jobs:
 
       - name: Build Editor Core
         working-directory: editor-core
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           npm ci
           npm run build
