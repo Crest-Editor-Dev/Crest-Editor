@@ -47,14 +47,22 @@ class MainActivity : ComponentActivity() {
     private lateinit var alpineManager: AlpineManager
     private lateinit var settingsManager: SettingsManager
     private var webView: WebView? = null
-    private var onToggleCommandPalette: (() -> Unit)? = null
+    private var onToggleCommandPalette: ((initialQuery: String) -> Unit)? = null
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
         if (event.action == android.view.KeyEvent.ACTION_DOWN) {
             if (event.keyCode == android.view.KeyEvent.KEYCODE_F1 ||
                 (event.isCtrlPressed && event.isShiftPressed && event.keyCode == android.view.KeyEvent.KEYCODE_P)
             ) {
-                onToggleCommandPalette?.invoke()
+                onToggleCommandPalette?.invoke(">")
+                return true
+            }
+            if (event.isCtrlPressed && !event.isShiftPressed && event.keyCode == android.view.KeyEvent.KEYCODE_P) {
+                onToggleCommandPalette?.invoke("")
+                return true
+            }
+            if (event.isCtrlPressed && event.keyCode == android.view.KeyEvent.KEYCODE_G) {
+                onToggleCommandPalette?.invoke(":")
                 return true
             }
         }
@@ -91,10 +99,18 @@ class MainActivity : ComponentActivity() {
                 val showSettings by viewModel.showSettings.collectAsState()
 
                 var showCommandPalette by remember { mutableStateOf(false) }
+                var commandPaletteInitialQuery by remember { mutableStateOf(">") }
+                var currentLineCount by remember { mutableStateOf(1) }
                 val commandRegistry = remember { CommandRegistry() }
 
                 DisposableEffect(Unit) {
-                    onToggleCommandPalette = { showCommandPalette = !showCommandPalette }
+                    onToggleCommandPalette = { prefix ->
+                        commandPaletteInitialQuery = prefix
+                        MonacoBridge.getLineCount(webView) { count ->
+                            currentLineCount = count
+                        }
+                        showCommandPalette = true
+                    }
                     onDispose { onToggleCommandPalette = null }
                 }
 
@@ -404,12 +420,20 @@ class MainActivity : ComponentActivity() {
                                 MonacoBridge.triggerAction(webView, "editor.action.changeAll")
                             },
                             CommandItem(
+                                id = "workbench.action.quickOpen",
+                                title = "File: Go to File...",
+                                category = "File",
+                                shortcut = "Ctrl+P"
+                            ) {
+                                onToggleCommandPalette?.invoke("")
+                            },
+                            CommandItem(
                                 id = "editor.action.gotoLine",
                                 title = "Editor: Go to Line...",
                                 category = "Editor",
                                 shortcut = "Ctrl+G"
                             ) {
-                                MonacoBridge.triggerAction(webView, "editor.action.gotoLine")
+                                onToggleCommandPalette?.invoke(":")
                             },
                             CommandItem(
                                 id = "editor.action.jumpToBracket",
@@ -658,7 +682,7 @@ class MainActivity : ComponentActivity() {
                                         viewModel.setShowSettings(true)
                                     },
                                     onSearchClick = {
-                                        showCommandPalette = true
+                                        onToggleCommandPalette?.invoke("")
                                     }
                                 )
                                 CrestTabBar(
@@ -835,11 +859,48 @@ class MainActivity : ComponentActivity() {
 
                 if (showCommandPalette) {
                     VSCodeCommandPalette(
+                        initialQuery = commandPaletteInitialQuery,
                         commandRegistry = commandRegistry,
+                        fileTreeItems = fileTreeItems,
+                        openTabs = openTabs,
+                        activeTabId = activeTabId,
+                        currentLineCount = currentLineCount,
                         onDismiss = { showCommandPalette = false },
                         onCommandExecute = { cmd ->
                             showCommandPalette = false
                             commandRegistry.execute(cmd)
+                        },
+                        onOpenFile = { path, targetLine, targetCol ->
+                            showCommandPalette = false
+                            viewModel.openFile(File(path), webView)
+                            if (targetLine != null) {
+                                webView?.postDelayed({
+                                    MonacoBridge.revealLine(webView, targetLine, targetCol ?: 1)
+                                }, 150)
+                            }
+                        },
+                        onNavigateLine = { line, col ->
+                            showCommandPalette = false
+                            MonacoBridge.revealLine(webView, line, col)
+                        },
+                        onOpenView = { viewId ->
+                            showCommandPalette = false
+                            when (viewId) {
+                                "workbench.view.explorer" -> {
+                                    scope.launch {
+                                        if (drawerState.isClosed) drawerState.open() else drawerState.close()
+                                    }
+                                }
+                                "workbench.view.terminal" -> {
+                                    viewModel.setShowTerminal(!viewModel.showTerminal.value)
+                                }
+                                "workbench.view.settings" -> {
+                                    viewModel.setShowSettings(true)
+                                }
+                                "workbench.view.reload" -> {
+                                    viewModel.refreshWorkspace(this@MainActivity)
+                                }
+                            }
                         }
                     )
                 }

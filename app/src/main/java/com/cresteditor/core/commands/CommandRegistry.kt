@@ -36,6 +36,9 @@ class CommandRegistry {
         commands.clear()
     }
 
+    fun getCommands(): List<CommandItem> = commands.toList()
+    fun getRecentCommandIds(): List<String> = recentCommandIds.toList()
+
     fun execute(command: CommandItem) {
         recentCommandIds.remove(command.id)
         recentCommandIds.add(0, command.id)

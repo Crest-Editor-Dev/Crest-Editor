@@ -682,7 +682,7 @@ private fun ActivityBarItem(
 /**
  * Helper to get extension-based file icons and colors (Seti theme style).
  */
-private fun getFileIcon(filename: String): Pair<ImageVector, Color> {
+internal fun getFileIcon(filename: String): Pair<ImageVector, Color> {
     val ext = filename.substringAfterLast('.', "").lowercase()
     return when (ext) {
         "kt", "kts" -> Pair(Icons.Default.Code, ColorKotlin)

@@ -12,6 +12,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.ViewQuilt
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,14 +29,17 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -39,9 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
-import com.cresteditor.core.commands.CommandItem
-import com.cresteditor.core.commands.CommandPaletteEntry
-import com.cresteditor.core.commands.CommandRegistry
+import com.cresteditor.core.commands.*
 
 private val VSCodeQuickInputBg = Color(0xFF252526)
 private val VSCodeQuickInputBorder = Color(0xFF3C3C3C)
@@ -53,26 +59,73 @@ private val VSCodeTextPrimary = Color(0xFFCCCCCC)
 private val VSCodeTextActive = Color(0xFFFFFFFF)
 private val VSCodeShortcut = Color(0xFF858585)
 private val VSCodeHighlight = Color(0xFF3794FF)
+private val VSCodeDescription = Color(0xFF969696)
+private val VSCodeDirtyDot = Color(0xFFE2C08D)
 
 /**
- * Pixel-Perfect VS Code Quick Open / Command Palette Modal for Crest-Editor.
+ * Pixel-Perfect Multi-Mode VS Code Quick Open / Command Palette Modal for Crest-Editor.
+ * Supports:
+ * - Empty / Query: File Search (Quick Open) + Open Editors (Ctrl+P)
+ * - `>`: Show and Run Commands (F1 / Ctrl+Shift+P)
+ * - `:`: Go to Line:Col (Ctrl+G)
+ * - `?`: Help / Show all Quick Access providers
+ * - `view `: Open View
  */
 @Composable
 fun VSCodeCommandPalette(
+    initialQuery: String = ">",
     commandRegistry: CommandRegistry,
+    fileTreeItems: List<FileTreeItem> = emptyList(),
+    openTabs: List<CrestTabItem> = emptyList(),
+    activeTabId: String = "",
+    currentLineCount: Int = 1,
     onDismiss: () -> Unit,
-    onCommandExecute: (CommandItem) -> Unit
+    onCommandExecute: (CommandItem) -> Unit,
+    onOpenFile: ((path: String, line: Int?, col: Int?) -> Unit)? = null,
+    onNavigateLine: ((line: Int, col: Int) -> Unit)? = null,
+    onOpenView: ((viewId: String) -> Unit)? = null
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    var textFieldValue by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = initialQuery,
+                selection = TextRange(initialQuery.length)
+            )
+        )
+    }
     val focusRequester = remember { FocusRequester() }
 
-    val entries = remember(searchQuery, commandRegistry) {
-        commandRegistry.getPaletteEntries(searchQuery)
+    val rawQuery = textFieldValue.text
+    val (mode, queryParam) = remember(rawQuery) {
+        QuickAccessMode.resolve(rawQuery)
+    }
+
+    // Generate entries based on current mode and query parameter
+    val entries = remember(rawQuery, mode, queryParam, commandRegistry, fileTreeItems, openTabs, currentLineCount) {
+        buildQuickPickEntries(
+            mode = mode,
+            param = queryParam,
+            commandRegistry = commandRegistry,
+            fileTreeItems = fileTreeItems,
+            openTabs = openTabs,
+            activeTabId = activeTabId,
+            currentLineCount = currentLineCount,
+            onCommandExecute = onCommandExecute,
+            onOpenFile = onOpenFile,
+            onNavigateLine = onNavigateLine,
+            onOpenView = onOpenView,
+            onSwitchMode = { newPrefix ->
+                textFieldValue = TextFieldValue(
+                    text = newPrefix,
+                    selection = TextRange(newPrefix.length)
+                )
+            }
+        )
     }
 
     // Filter to selectable items only for keyboard arrow navigation
     val selectableItems = remember(entries) {
-        entries.filterIsInstance<CommandPaletteEntry.Item>()
+        entries.filterIsInstance<QuickPickEntry.Item>()
     }
 
     var selectedIndex by remember(entries) { mutableStateOf(0) }
@@ -85,7 +138,6 @@ fun VSCodeCommandPalette(
     // Scroll to active index on navigation
     LaunchedEffect(selectedIndex) {
         if (selectableItems.isNotEmpty() && selectedIndex in selectableItems.indices) {
-            // Find visual index in full entries list
             val targetEntry = selectableItems[selectedIndex]
             val visualIndex = entries.indexOf(targetEntry)
             if (visualIndex >= 0) {
@@ -102,7 +154,6 @@ fun VSCodeCommandPalette(
             dismissOnClickOutside = true
         )
     ) {
-        // Remove Android default dialog window dimming so editor background stays crystal clear
         val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect {
             dialogWindow?.setDimAmount(0f)
@@ -121,14 +172,14 @@ fun VSCodeCommandPalette(
             Column(
                 modifier = Modifier
                     .padding(top = 8.dp)
-                    .fillMaxWidth(0.88f)
-                    .widthIn(max = 480.dp)
+                    .fillMaxWidth(0.92f)
+                    .widthIn(max = 560.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { /* Consume click inside modal */ }
                     .shadow(
-                        elevation = 12.dp,
+                        elevation = 14.dp,
                         shape = RoundedCornerShape(6.dp),
                         spotColor = Color(0x80000000),
                         ambientColor = Color(0x80000000)
@@ -137,7 +188,7 @@ fun VSCodeCommandPalette(
                     .border(1.dp, VSCodeQuickInputBorder, RoundedCornerShape(6.dp))
             ) {
                 // =============================================================
-                // 1. INPUT BOX (Exact VS Code QuickInput styling)
+                // 1. INPUT BOX (VS Code QuickInput styling)
                 // =============================================================
                 Row(
                     modifier = Modifier
@@ -149,28 +200,71 @@ fun VSCodeCommandPalette(
                         .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Prefix ">" prompt
-                    Text(
-                        text = ">",
-                        color = VSCodeCategoryHeader,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(end = 6.dp)
-                    )
+                    // Left Mode Indicator Icon / Glyph
+                    when (mode) {
+                        QuickAccessMode.COMMANDS -> {
+                            Text(
+                                text = ">",
+                                color = VSCodeCategoryHeader,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                        }
+                        QuickAccessMode.GOTO_LINE -> {
+                            Text(
+                                text = ":",
+                                color = VSCodeCategoryHeader,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                        }
+                        QuickAccessMode.HELP -> {
+                            Text(
+                                text = "?",
+                                color = VSCodeCategoryHeader,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                        }
+                        QuickAccessMode.VIEW -> {
+                            Text(
+                                text = "view",
+                                color = VSCodeCategoryHeader,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                        }
+                        QuickAccessMode.FILES -> {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = VSCodeShortcut,
+                                modifier = Modifier
+                                    .size(15.dp)
+                                    .padding(end = 4.dp)
+                            )
+                        }
+                    }
 
                     Box(modifier = Modifier.weight(1f)) {
-                        if (searchQuery.isEmpty()) {
+                        if (rawQuery.isEmpty()) {
                             Text(
-                                text = "Type a command to run...",
+                                text = mode.placeholder,
                                 color = VSCodeShortcut,
-                                fontSize = 13.sp
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
                         BasicTextField(
-                            value = searchQuery,
+                            value = textFieldValue,
                             onValueChange = {
-                                searchQuery = it
+                                textFieldValue = it
                                 selectedIndex = 0
                             },
                             modifier = Modifier
@@ -193,8 +287,8 @@ fun VSCodeCommandPalette(
                                             }
                                             Key.Enter -> {
                                                 if (selectableItems.isNotEmpty() && selectedIndex in selectableItems.indices) {
-                                                    val cmd = selectableItems[selectedIndex].command
-                                                    onCommandExecute(cmd)
+                                                    val item = selectableItems[selectedIndex]
+                                                    item.onExecute()
                                                 }
                                                 true
                                             }
@@ -216,9 +310,11 @@ fun VSCodeCommandPalette(
                         )
                     }
 
-                    if (searchQuery.isNotEmpty()) {
+                    if (rawQuery.isNotEmpty()) {
                         IconButton(
-                            onClick = { searchQuery = "" },
+                            onClick = {
+                                textFieldValue = TextFieldValue("", selection = TextRange.Zero)
+                            },
                             modifier = Modifier.size(20.dp)
                         ) {
                             Icon(
@@ -245,7 +341,13 @@ fun VSCodeCommandPalette(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No matching commands found",
+                            text = when (mode) {
+                                QuickAccessMode.COMMANDS -> "No matching commands found"
+                                QuickAccessMode.FILES -> "No matching files found"
+                                QuickAccessMode.GOTO_LINE -> "Invalid line number"
+                                QuickAccessMode.VIEW -> "No matching views found"
+                                QuickAccessMode.HELP -> "No help entries available"
+                            },
                             color = VSCodeShortcut,
                             fontSize = 12.5.sp
                         )
@@ -255,13 +357,20 @@ fun VSCodeCommandPalette(
                         state = listState,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 260.dp)
+                            .heightIn(max = 280.dp)
                             .padding(vertical = 4.dp, horizontal = 4.dp)
                     ) {
-                        itemsIndexed(entries) { _, entry ->
+                        itemsIndexed(
+                            items = entries,
+                            key = { index, entry ->
+                                when (entry) {
+                                    is QuickPickEntry.Header -> "header_${entry.title}_$index"
+                                    is QuickPickEntry.Item -> "item_${entry.id}_$index"
+                                }
+                            }
+                        ) { _, entry ->
                             when (entry) {
-                                is CommandPaletteEntry.Header -> {
-                                    // Category Header (e.g. "recently used", "other commands")
+                                is QuickPickEntry.Header -> {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -283,7 +392,7 @@ fun VSCodeCommandPalette(
                                     }
                                 }
 
-                                is CommandPaletteEntry.Item -> {
+                                is QuickPickEntry.Item -> {
                                     val isSelected = selectableItems.getOrNull(selectedIndex) == entry
 
                                     Row(
@@ -295,33 +404,110 @@ fun VSCodeCommandPalette(
                                                 RoundedCornerShape(3.dp)
                                             )
                                             .clickable {
-                                                onCommandExecute(entry.command)
+                                                entry.onExecute()
                                             }
-                                            .padding(horizontal = 10.dp),
+                                            .padding(horizontal = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Command Title with Fuzzy Highlight
-                                        val titleText = formatHighlightedTitle(
-                                            title = entry.command.title,
-                                            matchIndices = entry.matchIndices,
+                                        // Mode-specific Leading Icon
+                                        when (entry.icon) {
+                                            QuickPickIcon.FILE -> {
+                                                val iconData = getFileIcon(entry.label)
+                                                Icon(
+                                                    imageVector = iconData.first,
+                                                    contentDescription = null,
+                                                    tint = iconData.second,
+                                                    modifier = Modifier
+                                                        .size(16.dp)
+                                                        .padding(end = 6.dp)
+                                                )
+                                            }
+                                            QuickPickIcon.COMMAND -> {
+                                                Icon(
+                                                    imageVector = Icons.Default.Code,
+                                                    contentDescription = null,
+                                                    tint = if (isSelected) VSCodeTextActive else VSCodeShortcut,
+                                                    modifier = Modifier
+                                                        .size(15.dp)
+                                                        .padding(end = 6.dp)
+                                                )
+                                            }
+                                            QuickPickIcon.GOTO_LINE -> {
+                                                Text(
+                                                    text = "#",
+                                                    color = VSCodeHighlight,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(end = 6.dp)
+                                                )
+                                            }
+                                            QuickPickIcon.VIEW -> {
+                                                Icon(
+                                                    imageVector = Icons.Default.ViewQuilt,
+                                                    contentDescription = null,
+                                                    tint = if (isSelected) VSCodeTextActive else VSCodeShortcut,
+                                                    modifier = Modifier
+                                                        .size(15.dp)
+                                                        .padding(end = 6.dp)
+                                                )
+                                            }
+                                            QuickPickIcon.HELP -> {
+                                                Icon(
+                                                    imageVector = Icons.Default.HelpOutline,
+                                                    contentDescription = null,
+                                                    tint = if (isSelected) VSCodeTextActive else VSCodeShortcut,
+                                                    modifier = Modifier
+                                                        .size(15.dp)
+                                                        .padding(end = 6.dp)
+                                                )
+                                            }
+                                        }
+
+                                        // Primary Label with Fuzzy Highlight
+                                        val labelText = formatHighlightedText(
+                                            text = entry.label,
+                                            matchIndices = entry.labelMatchIndices,
                                             isSelected = isSelected
                                         )
 
                                         Text(
-                                            text = titleText,
-                                            modifier = Modifier.weight(1f),
+                                            text = labelText,
                                             fontSize = 13.sp,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
 
-                                        // Keyboard Shortcut Badge
-                                        entry.command.shortcut?.let { shortcut ->
-                                            Spacer(modifier = Modifier.width(10.dp))
+                                        // Optional Secondary Description (e.g. folder path or category)
+                                        entry.description?.let { desc ->
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = desc,
+                                                color = if (isSelected) VSCodeTextActive.copy(alpha = 0.8f) else VSCodeDescription,
+                                                fontSize = 11.5.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.weight(1f))
+
+                                        // Dirty dot indicator if modified
+                                        if (entry.isModified) {
+                                            Text(
+                                                text = "●",
+                                                color = VSCodeDirtyDot,
+                                                fontSize = 11.sp,
+                                                modifier = Modifier.padding(end = 6.dp)
+                                            )
+                                        }
+
+                                        // Keyboard Shortcut or Mode badge
+                                        entry.shortcut?.let { shortcut ->
                                             Text(
                                                 text = shortcut,
                                                 color = if (isSelected) VSCodeTextActive else VSCodeShortcut,
-                                                fontSize = 11.5.sp,
+                                                fontSize = 11.sp,
                                                 fontFamily = FontFamily.Monospace,
                                                 fontWeight = FontWeight.Medium
                                             )
@@ -338,10 +524,324 @@ fun VSCodeCommandPalette(
 }
 
 /**
+ * Builds the entries for the active Quick Access Mode.
+ */
+private fun buildQuickPickEntries(
+    mode: QuickAccessMode,
+    param: String,
+    commandRegistry: CommandRegistry,
+    fileTreeItems: List<FileTreeItem>,
+    openTabs: List<CrestTabItem>,
+    activeTabId: String,
+    currentLineCount: Int,
+    onCommandExecute: (CommandItem) -> Unit,
+    onOpenFile: ((path: String, line: Int?, col: Int?) -> Unit)?,
+    onNavigateLine: ((line: Int, col: Int) -> Unit)?,
+    onOpenView: ((viewId: String) -> Unit)?,
+    onSwitchMode: (prefix: String) -> Unit
+): List<QuickPickEntry> {
+    val result = mutableListOf<QuickPickEntry>()
+
+    when (mode) {
+        QuickAccessMode.COMMANDS -> {
+            val query = param.trim()
+            val commands = commandRegistry.getCommands()
+            val recentIds = commandRegistry.getRecentCommandIds()
+
+            if (query.isEmpty()) {
+                val recentList = recentIds.mapNotNull { id -> commands.find { it.id == id } }
+                if (recentList.isNotEmpty()) {
+                    result.add(QuickPickEntry.Header("recently used"))
+                    recentList.forEach { cmd ->
+                        result.add(
+                            QuickPickEntry.Item(
+                                id = cmd.id,
+                                label = cmd.title,
+                                description = cmd.category,
+                                shortcut = cmd.shortcut,
+                                icon = QuickPickIcon.COMMAND,
+                                onExecute = { onCommandExecute(cmd) }
+                            )
+                        )
+                    }
+                }
+
+                val otherList = commands.filter { cmd -> !recentIds.contains(cmd.id) }.sortedBy { it.title }
+                if (otherList.isNotEmpty()) {
+                    if (recentList.isNotEmpty()) {
+                        result.add(QuickPickEntry.Header("other commands"))
+                    }
+                    otherList.forEach { cmd ->
+                        result.add(
+                            QuickPickEntry.Item(
+                                id = cmd.id,
+                                label = cmd.title,
+                                description = cmd.category,
+                                shortcut = cmd.shortcut,
+                                icon = QuickPickIcon.COMMAND,
+                                onExecute = { onCommandExecute(cmd) }
+                            )
+                        )
+                    }
+                }
+            } else {
+                data class ScoredCommand(val cmd: CommandItem, val score: Int, val matchIndices: List<Int>)
+                val scored = mutableListOf<ScoredCommand>()
+
+                for (cmd in commands) {
+                    val match = QuickAccessFuzzyScorer.score(cmd.title, query)
+                    if (match != null) {
+                        scored.add(ScoredCommand(cmd, match.score, match.matchIndices))
+                    } else {
+                        // Also try category + title match
+                        val combined = "${cmd.category}: ${cmd.title}"
+                        val combMatch = QuickAccessFuzzyScorer.score(combined, query)
+                        if (combMatch != null) {
+                            scored.add(ScoredCommand(cmd, combMatch.score - 100, emptyList()))
+                        }
+                    }
+                }
+
+                scored.sortByDescending { it.score }
+                scored.forEach { sc ->
+                    result.add(
+                        QuickPickEntry.Item(
+                            id = sc.cmd.id,
+                            label = sc.cmd.title,
+                            description = sc.cmd.category,
+                            shortcut = sc.cmd.shortcut,
+                            icon = QuickPickIcon.COMMAND,
+                            labelMatchIndices = sc.matchIndices,
+                            onExecute = { onCommandExecute(sc.cmd) }
+                        )
+                    )
+                }
+            }
+        }
+
+        QuickAccessMode.GOTO_LINE -> {
+            val text = param.trim()
+            val maxLine = currentLineCount.coerceAtLeast(1)
+
+            if (text.isEmpty()) {
+                result.add(
+                    QuickPickEntry.Item(
+                        id = "goto_line_prompt",
+                        label = "Type a line number between 1 and $maxLine to navigate to.",
+                        description = "Current buffer has $maxLine lines",
+                        icon = QuickPickIcon.GOTO_LINE,
+                        onExecute = {}
+                    )
+                )
+            } else {
+                // Support format of `line` or `line,col` or `line:col`
+                val parts = text.split(',', ':')
+                val parsedLine = parts.getOrNull(0)?.trim()?.toIntOrNull()
+                val parsedCol = parts.getOrNull(1)?.trim()?.toIntOrNull()
+
+                if (parsedLine != null && parsedLine > 0) {
+                    val targetLine = parsedLine.coerceIn(1, maxLine)
+                    val targetCol = (parsedCol ?: 1).coerceAtLeast(1)
+                    result.add(
+                        QuickPickEntry.Item(
+                            id = "goto_line_$targetLine",
+                            label = "Go to line $targetLine, column $targetCol",
+                            description = "Press Enter to navigate",
+                            icon = QuickPickIcon.GOTO_LINE,
+                            onExecute = {
+                                onNavigateLine?.invoke(targetLine, targetCol)
+                            }
+                        )
+                    )
+                } else {
+                    result.add(
+                        QuickPickEntry.Item(
+                            id = "goto_line_invalid",
+                            label = "Invalid line number: $text",
+                            description = "Type a number from 1 to $maxLine",
+                            icon = QuickPickIcon.GOTO_LINE,
+                            onExecute = {}
+                        )
+                    )
+                }
+            }
+        }
+
+        QuickAccessMode.HELP -> {
+            val helpProviders = listOf(
+                Triple(">", "Show and Run Commands", "F1 / Ctrl+Shift+P"),
+                Triple(":", "Go to Line / Column", "Ctrl+G"),
+                Triple("view ", "Open View (Explorer, Terminal, Settings)", ""),
+                Triple("?", "Show all Quick Access Providers", "")
+            )
+
+            val filter = param.trim().lowercase()
+            result.add(QuickPickEntry.Header("quick access providers"))
+
+            helpProviders.forEach { (prefix, desc, shortcut) ->
+                if (filter.isEmpty() || desc.lowercase().contains(filter) || prefix.contains(filter)) {
+                    result.add(
+                        QuickPickEntry.Item(
+                            id = "help_$prefix",
+                            label = prefix,
+                            description = desc,
+                            shortcut = shortcut.ifEmpty { null },
+                            icon = QuickPickIcon.HELP,
+                            onExecute = {
+                                onSwitchMode(prefix)
+                            }
+                        )
+                    )
+                }
+            }
+        }
+
+        QuickAccessMode.VIEW -> {
+            val query = param.trim()
+            val viewItems = listOf(
+                Pair("workbench.view.explorer", "Explorer: Toggle Primary Side Bar"),
+                Pair("workbench.view.terminal", "Terminal: Toggle Terminal"),
+                Pair("workbench.view.settings", "Preferences: Open Settings (UI)"),
+                Pair("workbench.view.reload", "Developer: Reload Window")
+            )
+
+            result.add(QuickPickEntry.Header("views"))
+            for ((id, title) in viewItems) {
+                if (query.isEmpty()) {
+                    result.add(
+                        QuickPickEntry.Item(
+                            id = id,
+                            label = title,
+                            icon = QuickPickIcon.VIEW,
+                            onExecute = { onOpenView?.invoke(id) }
+                        )
+                    )
+                } else {
+                    val match = QuickAccessFuzzyScorer.score(title, query)
+                    if (match != null) {
+                        result.add(
+                            QuickPickEntry.Item(
+                                id = id,
+                                label = title,
+                                icon = QuickPickIcon.VIEW,
+                                labelMatchIndices = match.matchIndices,
+                                onExecute = { onOpenView?.invoke(id) }
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        QuickAccessMode.FILES -> {
+            // Check for line / column suffix (e.g. filename.js:45 or filename.js:45,10)
+            val lineSuffixMatch = Regex("^(.*?)(?::(\\d+)(?:[,:](\\d+))?)?$").matchEntire(param)
+            val fileQuery = lineSuffixMatch?.groupValues?.getOrNull(1)?.trim() ?: param.trim()
+            val targetLine = lineSuffixMatch?.groupValues?.getOrNull(2)?.toIntOrNull()
+            val targetCol = lineSuffixMatch?.groupValues?.getOrNull(3)?.toIntOrNull()
+
+            val onlyFiles = fileTreeItems.filter { !it.isDirectory }
+
+            if (fileQuery.isEmpty()) {
+                // Show open editors first
+                if (openTabs.isNotEmpty()) {
+                    result.add(QuickPickEntry.Header("open editors"))
+                    openTabs.forEach { tab ->
+                        val targetItem = onlyFiles.find { it.path == tab.id }
+                        val desc = targetItem?.path ?: tab.id
+                        result.add(
+                            QuickPickEntry.Item(
+                                id = "tab_${tab.id}",
+                                label = tab.title,
+                                description = desc.substringAfterLast('/', ""),
+                                shortcut = "OPEN",
+                                isModified = tab.isModified,
+                                icon = QuickPickIcon.FILE,
+                                onExecute = {
+                                    onOpenFile?.invoke(tab.id, targetLine, targetCol)
+                                }
+                            )
+                        )
+                    }
+                }
+
+                // Followed by workspace files
+                val remainingFiles = onlyFiles.filter { f -> openTabs.none { it.id == f.path } }
+                if (remainingFiles.isNotEmpty()) {
+                    if (openTabs.isNotEmpty()) {
+                        result.add(QuickPickEntry.Header("workspace files"))
+                    }
+                    remainingFiles.take(40).forEach { file ->
+                        result.add(
+                            QuickPickEntry.Item(
+                                id = "file_${file.path}",
+                                label = file.name,
+                                description = file.path,
+                                icon = QuickPickIcon.FILE,
+                                onExecute = {
+                                    onOpenFile?.invoke(file.path, targetLine, targetCol)
+                                }
+                            )
+                        )
+                    }
+                }
+            } else {
+                data class ScoredFile(
+                    val file: FileTreeItem,
+                    val isOpen: Boolean,
+                    val isModified: Boolean,
+                    val score: Int,
+                    val labelIndices: List<Int>
+                )
+                val scored = mutableListOf<ScoredFile>()
+
+                for (file in onlyFiles) {
+                    val openTab = openTabs.find { it.id == file.path }
+                    val isOpen = openTab != null
+                    val isModified = openTab?.isModified == true
+
+                    val nameMatch = QuickAccessFuzzyScorer.score(file.name, fileQuery)
+                    if (nameMatch != null) {
+                        val finalScore = nameMatch.score + (if (isOpen) 200 else 0)
+                        scored.add(ScoredFile(file, isOpen, isModified, finalScore, nameMatch.matchIndices))
+                    } else {
+                        val pathMatch = QuickAccessFuzzyScorer.score(file.path, fileQuery)
+                        if (pathMatch != null) {
+                            val finalScore = pathMatch.score - 100 + (if (isOpen) 200 else 0)
+                            scored.add(ScoredFile(file, isOpen, isModified, finalScore, emptyList()))
+                        }
+                    }
+                }
+
+                scored.sortByDescending { it.score }
+                scored.take(50).forEach { sf ->
+                    result.add(
+                        QuickPickEntry.Item(
+                            id = "search_file_${sf.file.path}",
+                            label = sf.file.name,
+                            description = sf.file.path,
+                            shortcut = if (sf.isOpen) "OPEN" else null,
+                            isModified = sf.isModified,
+                            icon = QuickPickIcon.FILE,
+                            labelMatchIndices = sf.labelIndices,
+                            onExecute = {
+                                onOpenFile?.invoke(sf.file.path, targetLine, targetCol)
+                            }
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    return result
+}
+
+/**
  * Builds an AnnotatedString highlighting fuzzy-matched characters in VS Code blue.
  */
-private fun formatHighlightedTitle(
-    title: String,
+private fun formatHighlightedText(
+    text: String,
     matchIndices: List<Int>,
     isSelected: Boolean
 ): AnnotatedString {
@@ -353,14 +853,14 @@ private fun formatHighlightedTitle(
                     fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
                 )
             ) {
-                append(title)
+                append(text)
             }
         }
     }
 
     val matchSet = matchIndices.toSet()
     return buildAnnotatedString {
-        for (i in title.indices) {
+        for (i in text.indices) {
             if (matchSet.contains(i)) {
                 withStyle(
                     SpanStyle(
@@ -368,7 +868,7 @@ private fun formatHighlightedTitle(
                         fontWeight = FontWeight.Bold
                     )
                 ) {
-                    append(title[i])
+                    append(text[i])
                 }
             } else {
                 withStyle(
@@ -377,7 +877,7 @@ private fun formatHighlightedTitle(
                         fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
                     )
                 ) {
-                    append(title[i])
+                    append(text[i])
                 }
             }
         }

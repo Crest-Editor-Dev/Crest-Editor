@@ -198,6 +198,40 @@ class MonacoBridge(
             }, 50)
         }
 
+        fun revealLine(webView: WebView?, lineNumber: Int, column: Int = 1) {
+            val target = webView ?: activeWebView?.get()
+            target?.let { wv ->
+                wv.post {
+                    val js = "(function() { " +
+                            "  try { " +
+                            "    var ed = typeof monaco !== 'undefined' ? monaco.editor.getEditors()[0] : null; " +
+                            "    if (ed) { " +
+                            "      var pos = { lineNumber: " + lineNumber + ", column: " + column + " }; " +
+                            "      ed.setPosition(pos); " +
+                            "      ed.revealPositionInCenter(pos, 0); " +
+                            "      ed.focus(); " +
+                            "      return 'OK'; " +
+                            "    } " +
+                            "  } catch(e) { return 'ERR:' + e; } " +
+                            "  return 'NO_EDITOR'; " +
+                            "})();"
+                    wv.evaluateJavascript(js, null)
+                }
+            }
+        }
+
+        fun getLineCount(webView: WebView?, callback: (Int) -> Unit) {
+            val target = webView ?: activeWebView?.get()
+            if (target == null) {
+                callback(1)
+                return
+            }
+            target.evaluateJavascript("(function() { try { var ed = monaco.editor.getEditors()[0]; return ed ? ed.getModel().getLineCount() : 1; } catch(e) { return 1; } })()") { res ->
+                val count = res?.toIntOrNull() ?: 1
+                callback(count)
+            }
+        }
+
         fun handleKey(webView: WebView?, key: String) {
             webView?.evaluateJavascript(
                 "if (window.CrestEditorAPI && window.CrestEditorAPI.handleKey) { window.CrestEditorAPI.handleKey(" +
