@@ -586,7 +586,16 @@ class RootfsManager(private val context: Context) {
         for (libName in nativeLibs) {
             val nativeFile = File(nativeDir, libName)
             val outFile = File(filesDir, libName)
-            if (!nativeFile.exists() || !outFile.exists()) {
+            if (nativeFile.exists()) {
+                try {
+                    if (!outFile.exists() || outFile.length() != nativeFile.length()) {
+                        nativeFile.copyTo(outFile, overwrite = true)
+                    }
+                    makeExecutable(outFile)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Native copy fallback for $libName: ${e.message}")
+                }
+            } else {
                 try {
                     copyAssetFile("$nativeLibsDir/$libName", outFile)
                     makeExecutable(outFile)
@@ -594,8 +603,6 @@ class RootfsManager(private val context: Context) {
                 } catch (e: Exception) {
                     Log.w(TAG, "Asset copy skipped for $libName: ${e.message}")
                 }
-            } else {
-                makeExecutable(outFile)
             }
         }
 
@@ -605,8 +612,12 @@ class RootfsManager(private val context: Context) {
             val talloc1 = File(filesDir, "libtalloc.so")
             if (talloc1.exists()) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    Files.deleteIfExists(talloc2.toPath())
-                    Files.createSymbolicLink(talloc2.toPath(), Paths.get("libtalloc.so"))
+                    try { Files.deleteIfExists(talloc2.toPath()) } catch (_: Exception) {}
+                    try {
+                        Files.createSymbolicLink(talloc2.toPath(), Paths.get("libtalloc.so"))
+                    } catch (_: Exception) {
+                        talloc1.copyTo(talloc2, overwrite = true)
+                    }
                 } else {
                     talloc1.copyTo(talloc2, overwrite = true)
                 }

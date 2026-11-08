@@ -30,9 +30,9 @@ elif [ -f "$PREFIX/libproot-xed.so" ]; then
     export PROOT="$PREFIX/libproot-xed.so"
 fi
 
-# Ensure libtalloc.so.2 link is created for the linker
+# Ensure libtalloc.so.2 link is created for legacy fallbacks if needed
 if [ -e "$PREFIX/libtalloc.so.2" ] || [ -L "$PREFIX/libtalloc.so.2" ]; then
-    rm -f "$PREFIX/libtalloc.so.2"
+    rm -f "$PREFIX/libtalloc.so.2" 2>/dev/null || true
 fi
 
 if [ -f "$PREFIX/libtalloc.so" ]; then

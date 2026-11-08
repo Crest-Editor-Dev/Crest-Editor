@@ -53,6 +53,8 @@ object TerminalSessionManager {
 
                 if (ready) {
                     val client = NativeTerminalClient(context, onSessionFinishedCallback = {
+                        activeSession = null
+                        activeClient = null
                         onStatusUpdate("Void Linux Process Terminated")
                     }).apply {
                         onModifiersChanged = this@TerminalSessionManager.onModifiersChanged
