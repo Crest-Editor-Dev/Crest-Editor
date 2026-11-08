@@ -1,4 +1,4 @@
-export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/usr/local/bin:/usr/local/sbin:/system/bin:/system/xbin:$PREFIX/local/bin
+export PATH=/usr/local/bin:/usr/local/sbin:/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/system/bin:/system/xbin:$PREFIX/local/bin
 export HOME=/public
 export TERM=xterm-256color
 
@@ -71,11 +71,12 @@ if [ -f "/etc/profile" ]; then
 fi
 
 # Environment setup
-export PATH=$PATH:/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/usr/local/bin:/usr/local/sbin
+export PATH=/usr/local/bin:/usr/local/sbin:$PATH:/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/system/bin:/system/xbin
 
 export HOME=/public
 export TERM=xterm-256color
 export PIP_BREAK_SYSTEM_PACKAGES=1
+export BROWSER=xdg-open
 
 # Enable bracketed paste in readline if supported
 bind 'set enable-bracketed-paste on' 2>/dev/null || true
@@ -96,15 +97,58 @@ EOF
         cp -f /initrc "$PREFIX/alpine/initrc" 2>/dev/null || true
     fi
 
-    # Ensure /etc/profile.d has updated repository URL
+    # Ensure /etc/profile.d has updated repository URL and browser environment
     if [ -d /etc/profile.d ]; then
         cat <<'EOF' > /etc/profile.d/cresteditor.sh
 bind 'set enable-bracketed-paste on' 2>/dev/null || true
+export BROWSER=xdg-open
 if [ -f /etc/apk/repositories ] && grep -q "heysaish\.github\.io" /etc/apk/repositories 2>/dev/null; then
     sed -i 's|heysaish\.github\.io/Crest-Packages|cresteditor\.github\.io/Crest-Packages|g' /etc/apk/repositories 2>/dev/null || true
 fi
 EOF
     fi
+
+    # Set up xdg-open / crest-open browser and URL bridge
+    for bindir in /usr/local/bin /usr/bin; do
+        if [ -d "$bindir" ]; then
+            cat <<'OPEN_EOF' > "$bindir/crest-open"
+#!/bin/sh
+# Crest-Editor Open URL & File Helper
+TARGET="$1"
+if [ -z "$TARGET" ]; then
+    echo "Usage: $(basename "$0") <url-or-file>" >&2
+    exit 1
+fi
+
+case "$TARGET" in
+    *://*|mailto:*)
+        ;;
+    *)
+        if [ -e "$TARGET" ]; then
+            TARGET="file://$(realpath "$TARGET" 2>/dev/null || echo "$TARGET")"
+        fi
+        ;;
+esac
+
+if [ -x /system/bin/am ]; then
+    /system/bin/am broadcast --user 0 \
+        -a android.intent.action.VIEW \
+        -n com.cresteditor/com.cresteditor.runtime.CrestOpenReceiver \
+        -d "$TARGET" >/dev/null 2>&1
+elif [ -x /system/bin/cmd ]; then
+    /system/bin/cmd activity broadcast --user 0 \
+        -a android.intent.action.VIEW \
+        -n com.cresteditor/com.cresteditor.runtime.CrestOpenReceiver \
+        -d "$TARGET" >/dev/null 2>&1
+fi
+OPEN_EOF
+            chmod 755 "$bindir/crest-open" 2>/dev/null || true
+            for link_name in xdg-open termux-open termux-open-url open; do
+                ln -sf "$bindir/crest-open" "$bindir/$link_name" 2>/dev/null || true
+            done
+            break
+        fi
+    done
 
 # First-time terminal open script execution
 if [ ! -f "$PREFIX/.first_boot_script_run" ]; then

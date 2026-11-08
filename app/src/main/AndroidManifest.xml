@@ -45,6 +45,10 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Terminal Session Management" />
         </service>
+
+        <receiver
+            android:name=".runtime.CrestOpenReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>
