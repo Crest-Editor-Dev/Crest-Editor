@@ -2,7 +2,6 @@ package com.cresteditor.runtime
 
 import android.content.ClipboardManager
 import android.content.Context
-import android.net.Uri
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -21,12 +20,6 @@ open class NativeTerminalClient(
 
     companion object {
         private const val TAG = "NativeTerminalClient"
-        private val URL_REGEX = "(?:https?|ftp|file)://[-a-zA-Z0-9+&@#/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#/%=~_|]".toRegex(RegexOption.IGNORE_CASE)
-
-        fun extractUrl(text: String?): String? {
-            if (text.isNullOrBlank()) return null
-            return URL_REGEX.find(text)?.value
-        }
     }
 
     // TerminalSessionClient implementations
@@ -103,21 +96,6 @@ open class NativeTerminalClient(
 
     override fun onSingleTapUp(e: MotionEvent) {
         terminalView?.let { view ->
-            val term = view.mEmulator
-            if (term != null) {
-                try {
-                    val columnAndRow = view.getColumnAndRow(e, true)
-                    val wordAtTap = term.screen.getWordAtLocation(columnAndRow[0], columnAndRow[1])
-                    val url = extractUrl(wordAtTap)
-                    if (url != null) {
-                        CrestOpenReceiver.openUrl(context, Uri.parse(url))
-                        return
-                    }
-                } catch (t: Throwable) {
-                    Log.d(TAG, "Failed to resolve tapped word for URL: ${t.message}")
-                }
-            }
-
             view.requestFocus()
             val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
             imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
