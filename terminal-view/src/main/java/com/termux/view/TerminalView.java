@@ -405,32 +405,32 @@ public final class TerminalView extends View {
 
                     boolean ctrlHeld = false;
                     if (codePoint <= 31 && codePoint != 27) {
-                        if (codePoint == '\n') {
+                        if (codePoint == '\n' || codePoint == '\r') {
                             // The AOSP keyboard and descendants seems to send \n as text when the enter key is pressed,
                             // instead of a key event like most other keyboard apps. A terminal expects \r for the enter
                             // key (although when icrnl is enabled this doesn't make a difference - run 'stty -icrnl' to
                             // check the behaviour).
                             codePoint = '\r';
-                        }
-
-                        // E.g. penti keyboard for ctrl input.
-                        ctrlHeld = true;
-                        switch (codePoint) {
-                            case 31:
-                                codePoint = '_';
-                                break;
-                            case 30:
-                                codePoint = '^';
-                                break;
-                            case 29:
-                                codePoint = ']';
-                                break;
-                            case 28:
-                                codePoint = '\\';
-                                break;
-                            default:
-                                codePoint += 96;
-                                break;
+                        } else {
+                            // E.g. penti keyboard for ctrl input.
+                            ctrlHeld = true;
+                            switch (codePoint) {
+                                case 31:
+                                    codePoint = '_';
+                                    break;
+                                case 30:
+                                    codePoint = '^';
+                                    break;
+                                case 29:
+                                    codePoint = ']';
+                                    break;
+                                case 28:
+                                    codePoint = '\\';
+                                    break;
+                                default:
+                                    codePoint += 96;
+                                    break;
+                            }
                         }
                     }
 

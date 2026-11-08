@@ -1,5 +1,4 @@
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/usr/local/bin:/usr/local/sbin:/system/bin:/system/xbin:$PREFIX/local/bin
-export PS1="\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\w\[\033[0m\] \$ "
 export HOME=/public
 export TERM=xterm-256color
 
@@ -77,7 +76,6 @@ export PATH=$PATH:/bin:/sbin:/usr/bin:/usr/sbin:/usr/share/bin:/usr/share/sbin:/
 export HOME=/public
 export TERM=xterm-256color
 export PIP_BREAK_SYSTEM_PACKAGES=1
-export PS1='\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\w\[\033[0m\] \$ '
 
 # Enable bracketed paste in readline if supported
 bind 'set enable-bracketed-paste on' 2>/dev/null || true
@@ -98,10 +96,9 @@ EOF
         cp -f /initrc "$PREFIX/alpine/initrc" 2>/dev/null || true
     fi
 
-    # Ensure /etc/profile.d has PS1 override and updated repository URL
+    # Ensure /etc/profile.d has updated repository URL
     if [ -d /etc/profile.d ]; then
         cat <<'EOF' > /etc/profile.d/cresteditor.sh
-export PS1='\[\033[1;32m\]\u\[\033[0m\]@localhost \[\033[1;34m\]\w\[\033[0m\] \$ '
 bind 'set enable-bracketed-paste on' 2>/dev/null || true
 if [ -f /etc/apk/repositories ] && grep -q "heysaish\.github\.io" /etc/apk/repositories 2>/dev/null; then
     sed -i 's|heysaish\.github\.io/Crest-Packages|cresteditor\.github\.io/Crest-Packages|g' /etc/apk/repositories 2>/dev/null || true

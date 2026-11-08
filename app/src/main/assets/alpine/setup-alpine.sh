@@ -7,6 +7,10 @@ printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
 
 if command -v xbps-install >/dev/null 2>&1; then
     echo "[2/2] Void Linux (Glibc) environment detected."
+    if [ ! -e /usr/share/terminfo/x/xterm-256color ]; then
+        echo "Configuring terminal support (ncurses)..."
+        xbps-install -Sy ncurses-base ncurses-term || true
+    fi
 elif command -v apk >/dev/null 2>&1; then
     echo "[2/4] Trusting CrestEditor Repository Key..."
     mkdir -p /etc/apk/keys
