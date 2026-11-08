@@ -30,7 +30,7 @@ import com.cresteditor.core.commands.CommandItem
 import com.cresteditor.core.commands.CommandRegistry
 import com.cresteditor.core.settings.SettingsManager
 import com.cresteditor.editor.MonacoBridge
-import com.cresteditor.runtime.AlpineManager
+import com.cresteditor.runtime.RootfsManager
 import com.cresteditor.runtime.TerminalSessionManager
 import com.cresteditor.ui.MainViewModel
 import com.cresteditor.ui.TerminalScreen
@@ -44,7 +44,7 @@ import java.io.File
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var alpineManager: AlpineManager
+    private lateinit var rootfsManager: RootfsManager
     private lateinit var settingsManager: SettingsManager
     private var webView: WebView? = null
     private var onToggleCommandPalette: ((initialQuery: String) -> Unit)? = null
@@ -81,7 +81,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        alpineManager = AlpineManager(this)
+        rootfsManager = RootfsManager(this)
         settingsManager = SettingsManager(applicationContext)
 
         setContent {

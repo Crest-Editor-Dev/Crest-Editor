@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.ViewGroup
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryAlert
@@ -50,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,8 +68,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
-import com.cresteditor.runtime.AlpineManager
 import com.cresteditor.runtime.NativeTerminalClient
+import com.cresteditor.runtime.RootfsManager
 import com.cresteditor.runtime.TerminalService
 import com.cresteditor.runtime.TerminalSessionManager
 import kotlin.concurrent.thread
@@ -82,12 +86,32 @@ fun TerminalScreen(
     val context = LocalContext.current
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var statusText by remember { mutableStateOf("Initializing...") }
+    val activityLogs = remember { mutableStateListOf<String>() }
     var currentSession by remember { mutableStateOf<TerminalSession?>(null) }
     var terminalViewRef by remember { mutableStateOf<TerminalView?>(null) }
     var clientRef by remember { mutableStateOf<NativeTerminalClient?>(null) }
 
-    val alpineManager = remember { AlpineManager(context) }
+    val rootfsManager = remember { RootfsManager(context) }
+
+    fun postStatus(status: String) {
+        mainHandler.post {
+            statusText = status
+            val formatted = ">>> $status"
+            if (activityLogs.isEmpty()) {
+                activityLogs.add(formatted)
+            } else {
+                val lastIdx = activityLogs.lastIndex
+                val last = activityLogs[lastIdx]
+                if (status.startsWith("Downloading Void RootFS:") && last.startsWith(">>> Downloading Void RootFS:")) {
+                    activityLogs[lastIdx] = formatted
+                } else {
+                    activityLogs.add(formatted)
+                }
+            }
+        }
+    }
 
     fun showKeyboard() {
         terminalViewRef?.let { view ->
@@ -135,14 +159,14 @@ fun TerminalScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Terminal,
-                            contentDescription = "Alpine Terminal",
+                            contentDescription = "Void Terminal",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
                             Text(
-                                text = "Alpine Linux Shell",
+                                text = "Void Linux (Glibc)",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -189,23 +213,34 @@ fun TerminalScreen(
                         )
                     }
                     IconButton(onClick = {
+                        currentSession = null
+                        activityLogs.clear()
+                        postStatus("Restarting Void Linux Session...")
                         TerminalSessionManager.restartSession(
                             context = context,
                             initialPath = initialPath,
-                            onStatusUpdate = { statusText = it },
+                            onStatusUpdate = { postStatus(it) },
                             onSessionReady = { session ->
-                                currentSession = session
-                                clientRef = TerminalSessionManager.activeClient
-                                terminalViewRef?.post {
-                                    terminalViewRef?.attachSession(session)
-                                    showKeyboard()
+                                mainHandler.post {
+                                    currentSession = session
+                                    clientRef = TerminalSessionManager.activeClient
+                                    terminalViewRef?.post {
+                                        val client = TerminalSessionManager.activeClient
+                                        if (client != null) {
+                                            client.terminalView = terminalViewRef
+                                            terminalViewRef?.setTerminalViewClient(client)
+                                            terminalViewRef?.attachSession(session)
+                                            terminalViewRef?.requestFocus()
+                                            showKeyboard()
+                                        }
+                                    }
                                 }
                             }
                         )
                     }) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "Restart Alpine"
+                            contentDescription = "Restart Terminal"
                         )
                     }
                 },
@@ -240,28 +275,30 @@ fun TerminalScreen(
                         context = ctx,
                         initialPath = initialPath,
                         onStatusUpdate = { status ->
-                            statusText = status
+                            postStatus(status)
                         },
                         onSessionReady = { session ->
-                            currentSession = session
-                            val client = TerminalSessionManager.activeClient
-                            clientRef = client
-                            view.post {
-                                if (client == null) {
-                                    android.util.Log.e(
-                                        "TerminalScreen",
-                                        "Cannot attach terminal session: TerminalViewClient is null"
-                                    )
-                                    statusText = "Terminal Client Initialization Failed"
-                                    return@post
+                            mainHandler.post {
+                                currentSession = session
+                                val client = TerminalSessionManager.activeClient
+                                clientRef = client
+                                view.post {
+                                    if (client == null) {
+                                        android.util.Log.e(
+                                            "TerminalScreen",
+                                            "Cannot attach terminal session: TerminalViewClient is null"
+                                        )
+                                        postStatus("Terminal Client Initialization Failed")
+                                        return@post
+                                    }
+
+                                    client.terminalView = view
+                                    view.setTerminalViewClient(client)
+                                    view.attachSession(session)
+
+                                    view.requestFocus()
+                                    showKeyboard()
                                 }
-
-                                client.terminalView = view
-                                view.setTerminalViewClient(client)
-                                view.attachSession(session)
-
-                                view.requestFocus()
-                                showKeyboard()
                             }
                         }
                     )
@@ -270,6 +307,53 @@ fun TerminalScreen(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+
+            if (currentSession == null) {
+                val logScrollState = rememberScrollState()
+                LaunchedEffect(activityLogs.size, activityLogs.lastOrNull()) {
+                    logScrollState.animateScrollTo(logScrollState.maxValue)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0F172A))
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(logScrollState)
+                    ) {
+                        Text(
+                            text = "─── Void Linux Environment Boot & Setup ───",
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64748B),
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        activityLogs.forEach { line ->
+                            val color = when {
+                                line.contains("Error", ignoreCase = true) || line.contains("failed", ignoreCase = true) -> Color(0xFFEF4444)
+                                line.contains("✔") || line.contains("🚀") || line.contains("passed", ignoreCase = true) || line.contains("successfully", ignoreCase = true) -> Color(0xFF22C55E)
+                                line.contains("Downloading", ignoreCase = true) || line.contains("Download started", ignoreCase = true) -> Color(0xFF38BDF8)
+                                line.contains("Verifying", ignoreCase = true) || line.contains("Validating", ignoreCase = true) -> Color(0xFFFBBF24)
+                                else -> Color(0xFFCBD5E1)
+                            }
+
+                            Text(
+                                text = line,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                color = color,
+                                lineHeight = 18.sp
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 

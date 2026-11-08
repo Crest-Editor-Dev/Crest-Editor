@@ -90,7 +90,10 @@ fi
 EOF
     chmod +x /initrc
 
-    # Also mirror to $PREFIX/alpine/initrc if directory exists
+    # Also mirror to $PREFIX/rootfs/initrc and $PREFIX/alpine/initrc if directory exists
+    if [ -d "$PREFIX/rootfs" ]; then
+        cp -f /initrc "$PREFIX/rootfs/initrc" 2>/dev/null || true
+    fi
     if [ -d "$PREFIX/alpine" ]; then
         cp -f /initrc "$PREFIX/alpine/initrc" 2>/dev/null || true
     fi

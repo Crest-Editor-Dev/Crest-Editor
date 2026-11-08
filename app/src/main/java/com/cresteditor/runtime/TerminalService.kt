@@ -107,7 +107,7 @@ class TerminalService : Service() {
                 "CrestEditor Terminal Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Keeps Alpine Linux Terminal session active"
+                description = "Keeps Void Linux Terminal session active"
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)

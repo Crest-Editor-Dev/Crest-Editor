@@ -31,7 +31,7 @@ object TerminalSessionManager {
         val existingSession = activeSession
         if (existingSession != null && existingSession.isRunning) {
             Log.d(TAG, "Reattaching to existing active TerminalSession")
-            onStatusUpdate("Alpine Linux Active")
+            onStatusUpdate("Void Linux Active")
             onSessionReady(existingSession)
             return
         }
@@ -42,32 +42,32 @@ object TerminalSessionManager {
         }
 
         isInitializing = true
-        onStatusUpdate("Initializing Alpine Environment...")
+        onStatusUpdate("Initializing Void Linux Environment...")
 
         thread {
             try {
-                val alpineManager = AlpineManager(context)
-                val ready = alpineManager.setupAlpineEnvironment { status ->
+                val rootfsManager = RootfsManager(context)
+                val ready = rootfsManager.setupRootfsEnvironment { status ->
                     onStatusUpdate(status)
                 }
 
                 if (ready) {
                     val client = NativeTerminalClient(context, onSessionFinishedCallback = {
-                        onStatusUpdate("Alpine Process Terminated")
+                        onStatusUpdate("Void Linux Process Terminated")
                     }).apply {
                         onModifiersChanged = this@TerminalSessionManager.onModifiersChanged
                     }
-                    val session = alpineManager.createAlpineTerminalSession(client, initialPath)
+                    val session = rootfsManager.createTerminalSession(client, initialPath)
 
                     activeClient = client
                     activeSession = session
                     isInitializing = false
 
-                    onStatusUpdate("Alpine Linux Active")
+                    onStatusUpdate("Void Linux Active")
                     onSessionReady(session)
                 } else {
                     isInitializing = false
-                    onStatusUpdate("Alpine Setup Failed")
+                    onStatusUpdate("Void Linux Setup Failed")
                 }
             } catch (e: Exception) {
                 isInitializing = false

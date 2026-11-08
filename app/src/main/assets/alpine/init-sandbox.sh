@@ -1,7 +1,13 @@
 export LD_LIBRARY_PATH=$PREFIX
 
+ROOTFS_DIR="$PREFIX/rootfs"
+if [ ! -d "$ROOTFS_DIR" ] && [ -d "$PREFIX/alpine" ]; then
+    ROOTFS_DIR="$PREFIX/alpine"
+fi
+
 mkdir -p "$PREFIX/tmp"
-mkdir -p "$PREFIX/alpine/tmp"
+mkdir -p "$ROOTFS_DIR/tmp"
+mkdir -p "$ROOTFS_DIR/tmp/shm"
 mkdir -p "$PREFIX/public"
 
 export PROOT_TMP_DIR=$PREFIX/tmp
@@ -63,7 +69,7 @@ if [ -n "$INITIAL_CWD" ] && [ -d "$INITIAL_CWD" ]; then
 else
     ARGS="$ARGS -w /public"
 fi
-ARGS="$ARGS -b $PREFIX/alpine/tmp:/dev/shm"
+ARGS="$ARGS -b $ROOTFS_DIR/tmp/shm:/dev/shm"
 
 
 if [ -e "/proc/self/fd" ]; then
@@ -83,7 +89,7 @@ if [ -e "/proc/self/fd/2" ]; then
 fi
 
 
-ARGS="$ARGS -r $PREFIX/alpine"
+ARGS="$ARGS -r $ROOTFS_DIR"
 ARGS="$ARGS -0"
 ARGS="$ARGS --link2symlink"
 ARGS="$ARGS --sysvipc"
