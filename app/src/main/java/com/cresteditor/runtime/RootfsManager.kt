@@ -11,6 +11,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
 import org.tukaani.xz.XZInputStream
@@ -19,6 +20,7 @@ class RootfsManager(private val context: Context) {
 
     companion object {
         private const val TAG = "RootfsManager"
+        private val setupMutex = Any()
         const val ROOTFS_DOWNLOAD_URL = "https://github.com/Crest-Editor-Dev/Crest-Rootfs/releases/download/latest/void-aarch64-rootfs.tar.xz"
         const val EXPECTED_ROOTFS_SHA256 = "cd51d38c80a7a86a58891260f52a107bb68b7e862488daa4d877df6ba5106441"
     }
@@ -77,7 +79,7 @@ class RootfsManager(private val context: Context) {
      * - Unpacks into a staging directory and verifies validation markers.
      * - Atomically swaps staging to the target rootfs directory.
      */
-    fun setupRootfsEnvironment(onProgress: (String) -> Unit = {}): Boolean {
+    fun setupRootfsEnvironment(onProgress: (String) -> Unit = {}): Boolean = synchronized(setupMutex) {
         try {
             if (!filesDir.exists()) filesDir.mkdirs()
 
@@ -202,16 +204,29 @@ class RootfsManager(private val context: Context) {
      * Downloads the RootFS archive with redirect following, .part buffering, and size verification.
      */
     private fun downloadRootfs(targetFile: File, onProgress: (String) -> Unit) {
-        val partFile = File(targetFile.parentFile, targetFile.name + ".part")
-        if (partFile.exists()) {
-            partFile.delete()
+        val parentDir = targetFile.parentFile ?: filesDir
+        if (!parentDir.exists()) {
+            parentDir.mkdirs()
+        }
+        val partFile = File(parentDir, "${targetFile.name}.part")
+
+        // 1. If target file already exists and valid, skip download
+        if (targetFile.exists() && targetFile.length() > 1000000) {
+            onProgress("Checking existing archive integrity...")
+            if (verifySha256(targetFile, EXPECTED_ROOTFS_SHA256)) {
+                Log.d(TAG, "Existing archive ${targetFile.absolutePath} is valid, skipping download.")
+                onProgress("Archive already present and verified! ✔")
+                return
+            } else {
+                Log.w(TAG, "Existing archive SHA-256 mismatch, removing invalid file.")
+                targetFile.delete()
+            }
         }
 
-        // 1. Check local candidate paths for offline testing
+        // 2. Check local candidates
         val localCandidates = listOf(
             File("/sdcard/Download/void-aarch64-rootfs.tar.xz"),
-            File("/storage/emulated/0/Download/void-aarch64-rootfs.tar.xz"),
-            File(filesDir, "void-aarch64-rootfs.tar.xz")
+            File("/storage/emulated/0/Download/void-aarch64-rootfs.tar.xz")
         )
         val localMatch = localCandidates.firstOrNull { it.exists() && it.length() > 1000000 }
         if (localMatch != null && localMatch != targetFile) {
@@ -220,13 +235,14 @@ class RootfsManager(private val context: Context) {
             return
         }
 
-        // 2. Download from GitHub Releases
+        // 3. Connect and follow redirects
         onProgress("Connecting to Void Linux server...")
 
         var currentUrl = ROOTFS_DOWNLOAD_URL
         var connection: HttpURLConnection? = null
         var redirectCount = 0
         val maxRedirects = 6
+        var totalLength = -1L
 
         try {
             while (redirectCount < maxRedirects) {
@@ -263,17 +279,18 @@ class RootfsManager(private val context: Context) {
                 throw IOException("Too many HTTP redirects ($redirectCount)")
             }
 
-            val totalLength = connection.contentLengthLong
+            totalLength = connection.contentLengthLong
             val totalMbStr = if (totalLength > 0) String.format("%.1f", totalLength / 1048576.0) else "24.0"
 
             var downloadedBytes = 0L
-            val buffer = ByteArray(32768)
+            val buffer = ByteArray(65536)
             var lastReportTime = 0L
 
+            Log.d(TAG, "Starting stream download: url=$currentUrl target=${targetFile.absolutePath} part=${partFile.absolutePath} totalLength=$totalLength")
             onProgress("Download started: void-aarch64-rootfs.tar.xz (~$totalMbStr MB)")
 
             connection.inputStream.use { input ->
-                FileOutputStream(partFile).use { output ->
+                FileOutputStream(partFile, false).use { output ->
                     while (true) {
                         val read = input.read(buffer)
                         if (read <= 0) break
@@ -288,26 +305,80 @@ class RootfsManager(private val context: Context) {
                             onProgress("Downloading Void RootFS: $percent% ($currentMb / $totalMbStr MB)")
                         }
                     }
+                    output.flush()
                 }
             }
 
-            // Verify complete download
+            // Verify complete download stream
             if (totalLength > 0 && downloadedBytes != totalLength) {
                 throw IOException("Incomplete download: expected $totalLength bytes, received $downloadedBytes bytes")
             }
 
-            // Atomically promote .part to target file
+            // Verify .part file exists and has non-zero size before finalization
+            if (!partFile.exists()) {
+                throw IOException("Finalization failed: .part file does not exist at ${partFile.absolutePath}")
+            }
+            val partLength = partFile.length()
+            if (partLength <= 0L) {
+                throw IOException("Finalization failed: .part file is empty (0 bytes) at ${partFile.absolutePath}")
+            }
+            if (totalLength > 0 && partLength != totalLength) {
+                throw IOException("Finalization failed: .part file size ($partLength bytes) does not match expected ($totalLength bytes) at ${partFile.absolutePath}")
+            }
+
+            Log.d(TAG, "Download complete. Finalizing archive: source=${partFile.absolutePath} ($partLength bytes) -> target=${targetFile.absolutePath}")
+            onProgress("Finalizing downloaded archive (${String.format("%.1f", partLength / 1048576.0)} MB)...")
+
+            // Promote .part to target file
             if (targetFile.exists()) {
                 targetFile.delete()
             }
-            if (!partFile.renameTo(targetFile)) {
-                partFile.copyTo(targetFile, overwrite = true)
-                partFile.delete()
+
+            var promoted = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try {
+                    Files.move(partFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+                    promoted = true
+                } catch (e: Exception) {
+                    Log.w(TAG, "Atomic move failed, falling back to standard replace move: ${e.message}")
+                    try {
+                        Files.move(partFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                        promoted = true
+                    } catch (e2: Exception) {
+                        Log.w(TAG, "Standard Files.move failed: ${e2.message}")
+                    }
+                }
             }
+
+            if (!promoted) {
+                if (partFile.renameTo(targetFile)) {
+                    promoted = true
+                } else {
+                    Log.w(TAG, "File.renameTo failed, attempting copyTo fallback")
+                    if (partFile.exists()) {
+                        partFile.copyTo(targetFile, overwrite = true)
+                        if (targetFile.exists() && targetFile.length() == partLength) {
+                            partFile.delete()
+                            promoted = true
+                        }
+                    }
+                }
+            }
+
+            if (!promoted || !targetFile.exists() || targetFile.length() != partLength) {
+                throw IOException("Failed to promote .part file (${partFile.absolutePath}, $partLength bytes) to final archive (${targetFile.absolutePath})")
+            }
+
+            Log.d(TAG, "Archive finalized successfully: target=${targetFile.absolutePath} (size=${targetFile.length()} bytes)")
             onProgress("Download completed successfully! (${String.format("%.1f", downloadedBytes / 1048576.0)} MB) ✔")
 
         } catch (e: Exception) {
-            partFile.delete()
+            Log.e(TAG, "downloadRootfs failed: ${e.message} (partFile=${partFile.absolutePath}, exists=${partFile.exists()}, size=${if (partFile.exists()) partFile.length() else -1})", e)
+            // Only clean up partial file if download was incomplete/aborted during transfer
+            if (partFile.exists() && totalLength > 0 && partFile.length() < totalLength) {
+                Log.w(TAG, "Cleaning up incomplete partial download (${partFile.length()} / $totalLength bytes)")
+                partFile.delete()
+            }
             throw e
         } finally {
             try {

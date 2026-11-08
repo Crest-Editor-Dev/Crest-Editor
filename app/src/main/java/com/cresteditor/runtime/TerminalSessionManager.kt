@@ -88,7 +88,10 @@ object TerminalSessionManager {
         activeSession?.finishIfRunning()
         activeSession = null
         activeClient = null
-        isInitializing = false
+        if (isInitializing) {
+            Log.d(TAG, "Initialization already in progress, ignoring duplicate restart")
+            return
+        }
         getOrCreateSession(context, initialPath, onStatusUpdate, onSessionReady)
     }
 
