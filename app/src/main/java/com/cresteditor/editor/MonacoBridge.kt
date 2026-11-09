@@ -117,6 +117,19 @@ class MonacoBridge(
             }
         }
 
+        fun syncExternalContent(webView: WebView?, path: String, content: String) {
+            val target = webView ?: activeWebView?.get()
+            target?.let { wv ->
+                wv.post {
+                    val jsCode = "if (window.CrestEditorAPI && window.CrestEditorAPI.syncExternalContent) { " +
+                            "window.CrestEditorAPI.syncExternalContent(" +
+                            JSONObject.quote(path) + ", " +
+                            JSONObject.quote(content) + "); }"
+                    wv.evaluateJavascript(jsCode, null)
+                }
+            }
+        }
+
         fun getContent(webView: WebView?, callback: (String) -> Unit) {
             webView?.let { wv ->
                 wv.evaluateJavascript("window.CrestEditorAPI ? window.CrestEditorAPI.getValue() : ''") { result ->

@@ -16,6 +16,7 @@ import java.io.File
 class WorkspaceFileWatcher(
     private val rootDir: File,
     private val coroutineScope: CoroutineScope,
+    private val onFileModified: ((File) -> Unit)? = null,
     private val onWorkspaceChanged: () -> Unit
 ) {
     private val TAG = "WorkspaceFileWatcher"
@@ -30,6 +31,7 @@ class WorkspaceFileWatcher(
                 FileObserver.DELETE or
                 FileObserver.MOVED_TO or
                 FileObserver.MOVED_FROM or
+                FileObserver.CLOSE_WRITE or
                 FileObserver.DELETE_SELF
     }
 
@@ -89,14 +91,26 @@ class WorkspaceFileWatcher(
     private fun handleFileEvent(event: Int, path: String?, parentDir: File) {
         if (path == null) return
 
+        val targetFile = File(parentDir, path)
+
         // If a new directory was created, attach a watcher to it
         if ((event and FileObserver.CREATE) != 0) {
-            val newlyCreated = File(parentDir, path)
-            if (newlyCreated.isDirectory) {
-                createObserver(newlyCreated)?.let {
+            if (targetFile.isDirectory) {
+                createObserver(targetFile)?.let {
                     it.startWatching()
                     synchronized(observers) {
                         observers.add(it)
+                    }
+                }
+            }
+        }
+
+        // Notify file modification if an open file was written to or moved/replaced into place
+        if ((event and (FileObserver.CLOSE_WRITE or FileObserver.MOVED_TO)) != 0) {
+            if (!targetFile.isDirectory) {
+                coroutineScope.launch(Dispatchers.Main) {
+                    if (isWatching) {
+                        onFileModified?.invoke(targetFile)
                     }
                 }
             }

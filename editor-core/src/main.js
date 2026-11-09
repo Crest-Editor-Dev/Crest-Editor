@@ -68,6 +68,7 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
   let isReady = false;
   let autoSaveTimer = null;
   let isContentDirty = false;
+  let isExternalSyncing = false;
   let shikiHighlighter = null;
   const loadedShikiLanguages = new Set();
 
@@ -287,6 +288,7 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
     updateStats();
 
     editor.onDidChangeModelContent(function() {
+      if (isExternalSyncing) return;
       isContentDirty = true;
       scheduleAutoSave();
       updateStats();
@@ -420,6 +422,42 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
         return true;
       } catch (err) {
         console.error('[Crest Monaco] openFile error:', err);
+        return false;
+      }
+    },
+    syncExternalContent: function(filePath, newContent) {
+      if (!editor) return false;
+      try {
+        const uri = monaco.Uri.file(filePath);
+        const model = monaco.editor.getModel(uri);
+        if (!model) return false;
+        if (model.getValue() === newContent) return true;
+
+        const isActive = editor.getModel() === model;
+        const viewState = isActive ? editor.saveViewState() : null;
+
+        isExternalSyncing = true;
+        try {
+          model.pushStackElement();
+          model.pushEditOperations(
+            [],
+            [{ range: model.getFullModelRange(), text: newContent }],
+            () => []
+          );
+          model.pushStackElement();
+        } finally {
+          isExternalSyncing = false;
+        }
+
+        if (isActive && viewState) {
+          editor.restoreViewState(viewState);
+        }
+        isContentDirty = false;
+        if (autoSaveTimer) clearTimeout(autoSaveTimer);
+        updateStats();
+        return true;
+      } catch (err) {
+        console.error('[Crest Monaco] syncExternalContent error:', err);
         return false;
       }
     },

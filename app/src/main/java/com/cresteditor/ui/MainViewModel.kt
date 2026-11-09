@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 class MainViewModel : ViewModel() {
 
@@ -71,15 +72,61 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    // Multi-layer self-save echo suppression & dirty sync caches
+    private val inFlightSaves = ConcurrentHashMap.newKeySet<String>()
+    private val lastSavedContentHashes = ConcurrentHashMap<String, Int>()
+    private val lastSavedTimestamps = ConcurrentHashMap<String, Long>()
+
     private var fileWatcher: WorkspaceFileWatcher? = null
 
     fun startFileWatcher(context: Context) {
         if (fileWatcher != null) return
         val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
-        fileWatcher = WorkspaceFileWatcher(workspaceDir, viewModelScope) {
-            refreshWorkspace(context)
-        }
+        fileWatcher = WorkspaceFileWatcher(
+            rootDir = workspaceDir,
+            coroutineScope = viewModelScope,
+            onFileModified = { file ->
+                handleExternalFileModified(file)
+            },
+            onWorkspaceChanged = {
+                refreshWorkspace(context)
+            }
+        )
         fileWatcher?.start()
+    }
+
+    private fun handleExternalFileModified(file: File) {
+        val path = file.absolutePath
+        val matchingTab = _openTabs.value.find { it.id == path } ?: return
+
+        // 1. Origin tracking: Ignore if this file is actively being saved by Crest Editor
+        if (inFlightSaves.contains(path)) return
+
+        // 2. Dirty check: NEVER overwrite unsaved / dirty editor models
+        if (matchingTab.isModified) {
+            _toastMessage.value = "External changes detected in ${file.name}. Keeping unsaved changes."
+            return
+        }
+
+        viewModelScope.launch {
+            // 3. Read current disk content
+            val readResult = WorkspaceManager.readFileContent(file)
+            val diskContent = readResult.getOrNull() ?: return@launch
+
+            // 4. Content validation (Multi-layer echo prevention)
+            val diskContentHash = diskContent.hashCode()
+            if (diskContentHash == lastSavedContentHashes[path]) {
+                // Content identical to our last known/saved version
+                return@launch
+            }
+
+            // 5. Update cache & synchronize with Monaco editor model
+            lastSavedContentHashes[path] = diskContentHash
+            lastSavedTimestamps[path] = file.lastModified()
+
+            val webView = MonacoBridge.getActiveWebView()
+            MonacoBridge.syncExternalContent(webView, path, diskContent)
+        }
     }
 
     fun stopFileWatcher() {
@@ -107,6 +154,10 @@ class MainViewModel : ViewModel() {
             val readResult = WorkspaceManager.readFileContent(file)
             val content = readResult.getOrDefault("")
             val language = WorkspaceManager.detectLanguage(file.name)
+
+            // Cache baseline for self-save echo suppression and sync comparisons
+            lastSavedContentHashes[path] = content.hashCode()
+            lastSavedTimestamps[path] = file.lastModified()
 
             val currentTabs = _openTabs.value
             if (currentTabs.none { it.id == path }) {
@@ -150,15 +201,21 @@ class MainViewModel : ViewModel() {
     }
 
     fun saveContent(context: Context, filePath: String, content: String) {
+        inFlightSaves.add(filePath)
         viewModelScope.launch {
             val targetFile = File(filePath)
             val writeResult = WorkspaceManager.writeFileContent(targetFile, content)
 
             writeResult.onSuccess {
+                lastSavedContentHashes[filePath] = content.hashCode()
+                lastSavedTimestamps[filePath] = targetFile.lastModified()
+                inFlightSaves.remove(filePath)
+
                 _openTabs.value = _openTabs.value.map { tab ->
                     if (tab.id == filePath) tab.copy(isModified = false) else tab
                 }
             }.onFailure { ex ->
+                inFlightSaves.remove(filePath)
                 _toastMessage.value = "Save failed: ${ex.localizedMessage}"
             }
         }
