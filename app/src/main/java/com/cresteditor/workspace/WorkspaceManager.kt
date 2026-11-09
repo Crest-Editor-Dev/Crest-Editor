@@ -10,10 +10,19 @@ object WorkspaceManager {
 
     fun getWorkspaceDir(context: Context): File {
         val workspace = File(context.filesDir, "workspace")
-        if (!workspace.exists()) {
+        val isNewWorkspace = !workspace.exists()
+        if (isNewWorkspace) {
             workspace.mkdirs()
         }
-        ensureStarterFiles(workspace)
+
+        val prefs = context.getSharedPreferences("crest_workspace_prefs", Context.MODE_PRIVATE)
+        val initialized = prefs.getBoolean("starter_files_initialized", false)
+        if (!initialized) {
+            if (isNewWorkspace || workspace.list().isNullOrEmpty()) {
+                ensureStarterFiles(workspace)
+            }
+            prefs.edit().putBoolean("starter_files_initialized", true).apply()
+        }
         return workspace
     }
 
