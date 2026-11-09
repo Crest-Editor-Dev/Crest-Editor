@@ -438,6 +438,42 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
         return false;
       }
     },
+    renameModel: function(oldPath, newPath, languageId) {
+      if (!editor) return false;
+      try {
+        const oldUri = monaco.Uri.file(oldPath);
+        const newUri = monaco.Uri.file(newPath);
+        const oldModel = monaco.editor.getModel(oldUri);
+        if (!oldModel) return false;
+
+        const content = oldModel.getValue();
+        const isActive = editor.getModel() === oldModel;
+        const viewState = isActive ? editor.saveViewState() : null;
+
+        let newModel = monaco.editor.getModel(newUri);
+        if (!newModel) {
+          newModel = monaco.editor.createModel(content, languageId, newUri);
+        } else {
+          if (newModel.getValue() !== content) {
+            newModel.setValue(content);
+          }
+        }
+
+        oldModel.dispose();
+
+        if (isActive) {
+          editor.setModel(newModel);
+          if (viewState) {
+            editor.restoreViewState(viewState);
+          }
+        }
+        updateStats();
+        return true;
+      } catch (err) {
+        console.error('[Crest Monaco] renameModel error:', err);
+        return false;
+      }
+    },
     syncExternalContent: function(filePath, newContent) {
       if (!editor) return false;
       try {

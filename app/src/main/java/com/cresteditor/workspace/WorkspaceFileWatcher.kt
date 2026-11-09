@@ -17,6 +17,7 @@ class WorkspaceFileWatcher(
     private val rootDir: File,
     private val coroutineScope: CoroutineScope,
     private val onFileModified: ((File) -> Unit)? = null,
+    private val onFileDeleted: ((File) -> Unit)? = null,
     private val onWorkspaceChanged: () -> Unit
 ) {
     private val TAG = "WorkspaceFileWatcher"
@@ -111,6 +112,17 @@ class WorkspaceFileWatcher(
                 coroutineScope.launch(Dispatchers.Main) {
                     if (isWatching) {
                         onFileModified?.invoke(targetFile)
+                    }
+                }
+            }
+        }
+
+        // Notify file deletion/move away (rm or mv)
+        if ((event and (FileObserver.DELETE or FileObserver.DELETE_SELF or FileObserver.MOVED_FROM)) != 0) {
+            if (!targetFile.isDirectory) {
+                coroutineScope.launch(Dispatchers.Main) {
+                    if (isWatching) {
+                        onFileDeleted?.invoke(targetFile)
                     }
                 }
             }

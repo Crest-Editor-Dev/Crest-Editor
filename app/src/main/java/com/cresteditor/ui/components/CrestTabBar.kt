@@ -16,6 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cresteditor.ui.theme.*
@@ -23,7 +25,8 @@ import com.cresteditor.ui.theme.*
 data class CrestTabItem(
     val id: String,
     val title: String,
-    val isModified: Boolean = false
+    val isModified: Boolean = false,
+    val isOrphaned: Boolean = false
 )
 
 @Composable
@@ -68,9 +71,11 @@ fun CrestTabBar(
                 Spacer(modifier = Modifier.width(6.dp))
 
                 Text(
-                    text = tab.title,
-                    color = textColor,
+                    text = if (tab.isOrphaned) "${tab.title} (deleted)" else tab.title,
+                    color = if (tab.isOrphaned) androidx.compose.ui.graphics.Color(0xFFF14C4C) else textColor,
                     fontSize = 13.sp,
+                    fontStyle = if (tab.isOrphaned) FontStyle.Italic else FontStyle.Normal,
+                    textDecoration = if (tab.isOrphaned) TextDecoration.LineThrough else null,
                     maxLines = 1
                 )
 

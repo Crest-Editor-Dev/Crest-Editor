@@ -1,9 +1,11 @@
 package com.cresteditor.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -89,6 +91,7 @@ data class FileTreeItem(
  *    - Active open file highlighted in VS Code blue selection background
  *    - In-place Search view & Source Control view
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CrestFileDrawer(
     projectName: String = "Crest Project",
@@ -98,6 +101,7 @@ fun CrestFileDrawer(
     onNewFileClick: () -> Unit = {},
     onNewFolderClick: () -> Unit = {},
     onRefreshClick: () -> Unit = {},
+    onRenameClick: (FileTreeItem) -> Unit = {},
     onTerminalClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onCloseDrawer: () -> Unit = {}
@@ -375,30 +379,35 @@ fun CrestFileDrawer(
                                         .fillMaxWidth()
                                         .height(32.dp)
                                         .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
-                                        .clickable {
-                                            if (isFolder) {
-                                                if (isExpanded) {
-                                                    // Collapsing folder: remove from expandedPaths
-                                                    expandedPaths = expandedPaths - item.path
-                                                    if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${java.io.File.separator}"))) {
-                                                        val parentPath = java.io.File(item.path).parent
-                                                        val isParentExpanded = parentPath != null && expandedPaths.contains(parentPath)
-                                                        activeFolderTreePath = if (isParentExpanded) parentPath else null
+                                        .combinedClickable(
+                                            onClick = {
+                                                if (isFolder) {
+                                                    if (isExpanded) {
+                                                        // Collapsing folder: remove from expandedPaths
+                                                        expandedPaths = expandedPaths - item.path
+                                                        if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${java.io.File.separator}"))) {
+                                                            val parentPath = java.io.File(item.path).parent
+                                                            val isParentExpanded = parentPath != null && expandedPaths.contains(parentPath)
+                                                            activeFolderTreePath = if (isParentExpanded) parentPath else null
+                                                        }
+                                                    } else {
+                                                        // Expanding folder: add only this folder to expandedPaths
+                                                        expandedPaths = expandedPaths + item.path
+                                                        activeFolderTreePath = item.path
                                                     }
                                                 } else {
-                                                    // Expanding folder: add only this folder to expandedPaths
-                                                    expandedPaths = expandedPaths + item.path
-                                                    activeFolderTreePath = item.path
+                                                    onFileSelect(item)
+                                                    // When selecting a file, activate its parent folder tree guide
+                                                    val parentPath = java.io.File(item.path).parent
+                                                    if (parentPath != null && expandedPaths.contains(parentPath)) {
+                                                        activeFolderTreePath = parentPath
+                                                    }
                                                 }
-                                            } else {
-                                                onFileSelect(item)
-                                                // When selecting a file, activate its parent folder tree guide
-                                                val parentPath = java.io.File(item.path).parent
-                                                if (parentPath != null && expandedPaths.contains(parentPath)) {
-                                                    activeFolderTreePath = parentPath
-                                                }
+                                            },
+                                            onLongClick = {
+                                                onRenameClick(item)
                                             }
-                                        }
+                                        )
                                 ) {
                                     // 1. VS Code Active Indent Guide Line
                                     // Exact 1dp vertical line aligned under parent folder's chevron center
@@ -454,8 +463,24 @@ fun CrestFileDrawer(
                                             fontSize = 14.sp,
                                             fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
                                             maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
                                         )
+
+                                        Spacer(modifier = Modifier.weight(1f))
+
+                                        // Mobile touch rename action
+                                        IconButton(
+                                            onClick = { onRenameClick(item) },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "Rename",
+                                                tint = if (isActive) VSCodeTextActive.copy(alpha = 0.7f) else VSCodeActivityBarInactive.copy(alpha = 0.45f),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

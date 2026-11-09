@@ -132,6 +132,20 @@ class MonacoBridge(
             }
         }
 
+        fun renameModel(webView: WebView?, oldPath: String, newPath: String, languageId: String) {
+            val target = webView ?: activeWebView?.get()
+            target?.let { wv ->
+                wv.post {
+                    val jsCode = "if (window.CrestEditorAPI && window.CrestEditorAPI.renameModel) { " +
+                            "window.CrestEditorAPI.renameModel(" +
+                            JSONObject.quote(oldPath) + ", " +
+                            JSONObject.quote(newPath) + ", " +
+                            JSONObject.quote(languageId) + "); }"
+                    wv.evaluateJavascript(jsCode, null)
+                }
+            }
+        }
+
         fun syncExternalContent(webView: WebView?, path: String, content: String) {
             val target = webView ?: activeWebView?.get()
             target?.let { wv ->

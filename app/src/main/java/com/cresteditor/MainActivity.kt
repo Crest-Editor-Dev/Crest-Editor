@@ -500,6 +500,10 @@ class MainActivity : ComponentActivity() {
                 val isFolderCreation by viewModel.isFolderCreation.collectAsState()
                 val newNameInput by viewModel.newNameInput.collectAsState()
                 val validationError by viewModel.validationError.collectAsState()
+                val showRenameDialog by viewModel.showRenameDialog.collectAsState()
+                val renameTargetItem by viewModel.renameTargetItem.collectAsState()
+                val renameInput by viewModel.renameInput.collectAsState()
+                val renameValidationError by viewModel.renameValidationError.collectAsState()
                 val toastMessage by viewModel.toastMessage.collectAsState()
 
                 val monacoBridge = remember {
@@ -611,6 +615,66 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                // Rename Dialog
+                if (showRenameDialog && renameTargetItem != null) {
+                    val isDir = renameTargetItem!!.isDirectory
+                    AlertDialog(
+                        onDismissRequest = {
+                            viewModel.closeRenameDialog()
+                        },
+                        title = {
+                            Text(
+                                text = if (isDir) "Rename Folder" else "Rename File",
+                                color = CrestTextActive
+                            )
+                        },
+                        text = {
+                            Column {
+                                OutlinedTextField(
+                                    value = renameInput,
+                                    onValueChange = { valStr ->
+                                        viewModel.updateRenameInput(valStr)
+                                    },
+                                    label = { Text(if (isDir) "Folder Name" else "File Name") },
+                                    singleLine = true,
+                                    isError = renameValidationError != null,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = CrestAccentPrimary,
+                                        focusedLabelColor = CrestAccentPrimary
+                                    )
+                                )
+                                if (renameValidationError != null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = renameValidationError!!,
+                                        color = CrestAccentRed,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    viewModel.executeRename(context, webView)
+                                }
+                            ) {
+                                Text("Rename", color = CrestAccentPrimary)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    viewModel.closeRenameDialog()
+                                }
+                            ) {
+                                Text("Cancel", color = CrestTextSecondary)
+                            }
+                        },
+                        containerColor = CrestSurfaceHeader
+                    )
+                }
+
                 ModalNavigationDrawer(
                     drawerState = drawerState,
                     gesturesEnabled = drawerState.isOpen,
@@ -639,6 +703,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onRefreshClick = {
                                     viewModel.refreshWorkspace(this@MainActivity)
+                                },
+                                onRenameClick = { item ->
+                                    viewModel.openRenameDialog(item)
                                 },
                                 onTerminalClick = {
                                     scope.launch {

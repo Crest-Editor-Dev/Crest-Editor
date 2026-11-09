@@ -153,6 +153,25 @@ h1 {
         }
     }
 
+    suspend fun renameFile(oldFile: File, newName: String): Result<File> = withContext(Dispatchers.IO) {
+        try {
+            val parentDir = oldFile.parentFile ?: return@withContext Result.failure(IllegalArgumentException("Parent directory not found."))
+            val trimmed = newName.trim()
+            val validationError = validateName(parentDir, trimmed)
+            if (validationError != null) {
+                return@withContext Result.failure(IllegalArgumentException(validationError))
+            }
+            val newFile = File(parentDir, trimmed)
+            if (oldFile.renameTo(newFile)) {
+                Result.success(newFile)
+            } else {
+                Result.failure(IllegalStateException("Could not rename file."))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun createNewFolder(parentDir: File, name: String): Result<File> = withContext(Dispatchers.IO) {
         try {
             val trimmed = name.trim()

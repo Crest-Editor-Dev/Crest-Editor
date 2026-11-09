@@ -40,6 +40,18 @@ class MainViewModel : ViewModel() {
     private val _showCreateDialog = MutableStateFlow(false)
     val showCreateDialog: StateFlow<Boolean> = _showCreateDialog.asStateFlow()
 
+    private val _showRenameDialog = MutableStateFlow(false)
+    val showRenameDialog: StateFlow<Boolean> = _showRenameDialog.asStateFlow()
+
+    private val _renameTargetItem = MutableStateFlow<FileTreeItem?>(null)
+    val renameTargetItem: StateFlow<FileTreeItem?> = _renameTargetItem.asStateFlow()
+
+    private val _renameInput = MutableStateFlow("")
+    val renameInput: StateFlow<String> = _renameInput.asStateFlow()
+
+    private val _renameValidationError = MutableStateFlow<String?>(null)
+    val renameValidationError: StateFlow<String?> = _renameValidationError.asStateFlow()
+
     private val _isFolderCreation = MutableStateFlow(false)
     val isFolderCreation: StateFlow<Boolean> = _isFolderCreation.asStateFlow()
 
@@ -88,11 +100,31 @@ class MainViewModel : ViewModel() {
             onFileModified = { file ->
                 handleExternalFileModified(file)
             },
+            onFileDeleted = { file ->
+                handleExternalFileDeleted(file)
+            },
             onWorkspaceChanged = {
                 refreshWorkspace(context)
             }
         )
         fileWatcher?.start()
+    }
+
+    private fun handleExternalFileDeleted(file: File) {
+        val path = file.absolutePath
+        val dirPrefix = path + File.separator
+        var marked = false
+        _openTabs.value = _openTabs.value.map { tab ->
+            if (tab.id == path || tab.id.startsWith(dirPrefix)) {
+                marked = true
+                tab.copy(isOrphaned = true)
+            } else {
+                tab
+            }
+        }
+        if (marked) {
+            _toastMessage.value = "${file.name} (deleted from disk)"
+        }
     }
 
     private fun handleExternalFileModified(file: File) {
@@ -225,7 +257,7 @@ class MainViewModel : ViewModel() {
                 inFlightSaves.remove(filePath)
 
                 _openTabs.value = _openTabs.value.map { tab ->
-                    if (tab.id == filePath) tab.copy(isModified = false) else tab
+                    if (tab.id == filePath) tab.copy(isModified = false, isOrphaned = false) else tab
                 }
             }.onFailure { ex ->
                 inFlightSaves.remove(filePath)
@@ -296,6 +328,110 @@ class MainViewModel : ViewModel() {
                 }
             }.onFailure { ex ->
                 _validationError.value = ex.message ?: "Creation failed."
+            }
+        }
+    }
+
+    fun openRenameDialog(item: FileTreeItem) {
+        _renameTargetItem.value = item
+        _renameInput.value = item.name
+        _renameValidationError.value = null
+        _showRenameDialog.value = true
+    }
+
+    fun closeRenameDialog() {
+        _showRenameDialog.value = false
+        _renameTargetItem.value = null
+        _renameInput.value = ""
+        _renameValidationError.value = null
+    }
+
+    fun updateRenameInput(newName: String) {
+        _renameInput.value = newName
+        val target = _renameTargetItem.value ?: return
+        val parent = File(target.path).parentFile ?: return
+        if (newName.trim() == target.name) {
+            _renameValidationError.value = null
+        } else {
+            _renameValidationError.value = WorkspaceManager.validateName(parent, newName)
+        }
+    }
+
+    fun executeRename(context: Context, webView: WebView?) {
+        val target = _renameTargetItem.value ?: return
+        val newName = _renameInput.value.trim()
+        val oldFile = File(target.path)
+        val parent = oldFile.parentFile ?: return
+
+        if (newName == target.name) {
+            closeRenameDialog()
+            return
+        }
+
+        val err = WorkspaceManager.validateName(parent, newName)
+        if (err != null) {
+            _renameValidationError.value = err
+            return
+        }
+
+        viewModelScope.launch {
+            val result = WorkspaceManager.renameFile(oldFile, newName)
+            result.onSuccess { newFile ->
+                val oldPath = oldFile.absolutePath
+                val newPath = newFile.absolutePath
+                val newLanguage = WorkspaceManager.detectLanguage(newFile.name)
+
+                // Update caches if tracked
+                if (lastSavedContentHashes.containsKey(oldPath)) {
+                    val hash = lastSavedContentHashes.remove(oldPath)
+                    if (hash != null) lastSavedContentHashes[newPath] = hash
+                }
+                if (lastSavedTimestamps.containsKey(oldPath)) {
+                    lastSavedTimestamps.remove(oldPath)
+                    lastSavedTimestamps[newPath] = newFile.lastModified()
+                }
+
+                if (oldFile.isDirectory) {
+                    val oldPrefix = oldFile.absolutePath + File.separator
+                    val newPrefix = newFile.absolutePath + File.separator
+                    _openTabs.value = _openTabs.value.map { tab ->
+                        if (tab.id.startsWith(oldPrefix)) {
+                            val rel = tab.id.removePrefix(oldPrefix)
+                            val newChildPath = newPrefix + rel
+                            val childLang = WorkspaceManager.detectLanguage(tab.title)
+                            MonacoBridge.renameModel(webView, tab.id, newChildPath, childLang)
+                            tab.copy(id = newChildPath)
+                        } else {
+                            tab
+                        }
+                    }
+                    if (_activeTabId.value.startsWith(oldPrefix)) {
+                        _activeTabId.value = newPrefix + _activeTabId.value.removePrefix(oldPrefix)
+                    }
+                } else {
+                    // Update open tabs
+                    _openTabs.value = _openTabs.value.map { tab ->
+                        if (tab.id == oldPath) {
+                            tab.copy(id = newPath, title = newFile.name, isOrphaned = false)
+                        } else {
+                            tab
+                        }
+                    }
+
+                    // Update active tab if it was the renamed file
+                    if (_activeTabId.value == oldPath) {
+                        _activeTabId.value = newPath
+                        _activeLanguage.value = newLanguage
+                    }
+
+                    // Update Monaco Editor Model URI & Content
+                    MonacoBridge.renameModel(webView, oldPath, newPath, newLanguage)
+                }
+
+                closeRenameDialog()
+                refreshWorkspace(context)
+            }.onFailure { ex ->
+                _renameValidationError.value = ex.message ?: "Rename failed."
             }
         }
     }
