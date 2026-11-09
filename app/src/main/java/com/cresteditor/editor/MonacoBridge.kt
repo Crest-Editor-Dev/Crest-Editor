@@ -104,14 +104,29 @@ class MonacoBridge(
 
         fun getActiveWebView(): WebView? = activeWebView?.get()
 
-        fun openFile(webView: WebView?, path: String, content: String, languageId: String) {
-            webView?.let { wv ->
+        fun openFile(webView: WebView?, path: String, content: String?, languageId: String, isModified: Boolean = false) {
+            val target = webView ?: activeWebView?.get()
+            target?.let { wv ->
                 wv.post {
+                    val contentArg = if (content != null) JSONObject.quote(content) else "null"
                     val jsCode = "if (window.CrestEditorAPI && window.CrestEditorAPI.openFile) { " +
                             "window.CrestEditorAPI.openFile(" +
                             JSONObject.quote(path) + ", " +
-                            JSONObject.quote(content) + ", " +
-                            JSONObject.quote(languageId) + "); }"
+                            contentArg + ", " +
+                            JSONObject.quote(languageId) + ", " +
+                            isModified + "); }"
+                    wv.evaluateJavascript(jsCode, null)
+                }
+            }
+        }
+
+        fun closeFile(webView: WebView?, path: String) {
+            val target = webView ?: activeWebView?.get()
+            target?.let { wv ->
+                wv.post {
+                    val jsCode = "if (window.CrestEditorAPI && window.CrestEditorAPI.closeFile) { " +
+                            "window.CrestEditorAPI.closeFile(" +
+                            JSONObject.quote(path) + "); }"
                     wv.evaluateJavascript(jsCode, null)
                 }
             }

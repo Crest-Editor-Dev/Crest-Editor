@@ -395,9 +395,8 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
       updateStats();
       return true;
     },
-    openFile: function(filePath, content, languageId) {
+    openFile: function(filePath, content, languageId, isModified) {
       if (!editor) return false;
-      isContentDirty = false;
       if (autoSaveTimer) clearTimeout(autoSaveTimer);
 
       if (languageId && shikiHighlighter && !loadedShikiLanguages.has(languageId)) {
@@ -408,20 +407,34 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
         const uri = monaco.Uri.file(filePath);
         let model = monaco.editor.getModel(uri);
         if (!model) {
-          model = monaco.editor.createModel(content, languageId, uri);
+          model = monaco.editor.createModel(content || '', languageId, uri);
+          isContentDirty = false;
         } else {
-          if (model.getValue() !== content) {
-            model.setValue(content);
+          // Model already exists in memory: preserve its text, undo stack, and dirty status!
+          if (languageId) {
+            monaco.editor.setModelLanguage(model, languageId);
           }
-          monaco.editor.setModelLanguage(model, languageId);
+          isContentDirty = (typeof isModified === 'boolean') ? isModified : isContentDirty;
         }
         editor.setModel(model);
-        isContentDirty = false;
         if (autoSaveTimer) clearTimeout(autoSaveTimer);
         updateStats();
         return true;
       } catch (err) {
         console.error('[Crest Monaco] openFile error:', err);
+        return false;
+      }
+    },
+    closeFile: function(filePath) {
+      try {
+        const uri = monaco.Uri.file(filePath);
+        const model = monaco.editor.getModel(uri);
+        if (model) {
+          model.dispose();
+        }
+        return true;
+      } catch (err) {
+        console.error('[Crest Monaco] closeFile error:', err);
         return false;
       }
     },

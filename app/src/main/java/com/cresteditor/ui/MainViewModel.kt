@@ -151,22 +151,31 @@ class MainViewModel : ViewModel() {
 
         viewModelScope.launch {
             val path = file.absolutePath
+            val language = WorkspaceManager.detectLanguage(file.name)
+            val currentTabs = _openTabs.value
+            val existingTab = currentTabs.find { it.id == path }
+
+            if (existingTab != null) {
+                // Tab is ALREADY OPEN: switch to in-memory model without reading or overwriting from disk
+                _activeTabId.value = path
+                _activeLanguage.value = language
+                MonacoBridge.openFile(webView, path, null, language, existingTab.isModified)
+                return@launch
+            }
+
+            // Fresh file open: read content from disk
             val readResult = WorkspaceManager.readFileContent(file)
             val content = readResult.getOrDefault("")
-            val language = WorkspaceManager.detectLanguage(file.name)
 
             // Cache baseline for self-save echo suppression and sync comparisons
             lastSavedContentHashes[path] = content.hashCode()
             lastSavedTimestamps[path] = file.lastModified()
 
-            val currentTabs = _openTabs.value
-            if (currentTabs.none { it.id == path }) {
-                _openTabs.value = currentTabs + CrestTabItem(id = path, title = file.name, isModified = false)
-            }
+            _openTabs.value = currentTabs + CrestTabItem(id = path, title = file.name, isModified = false)
             _activeTabId.value = path
             _activeLanguage.value = language
 
-            MonacoBridge.openFile(webView, path, content, language)
+            MonacoBridge.openFile(webView, path, content, language, false)
         }
     }
 
@@ -174,6 +183,10 @@ class MainViewModel : ViewModel() {
         val currentTabs = _openTabs.value
         val newTabs = currentTabs.filterNot { it.id == tabId }
         _openTabs.value = newTabs
+        lastSavedContentHashes.remove(tabId)
+        lastSavedTimestamps.remove(tabId)
+        inFlightSaves.remove(tabId)
+        MonacoBridge.closeFile(webView, tabId)
 
         if (_activeTabId.value == tabId) {
             if (newTabs.isNotEmpty()) {
