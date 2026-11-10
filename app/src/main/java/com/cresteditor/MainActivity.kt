@@ -780,7 +780,9 @@ class MainActivity : ComponentActivity() {
                                 .fillMaxSize()
                                 .padding(innerPadding)
                         ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                val totalContainerHeight = maxHeight
+
                                 CrestEditorScreen(
                                     onWebViewCreated = { wv ->
                                         webView = wv
@@ -798,7 +800,8 @@ class MainActivity : ComponentActivity() {
                                             viewModel.setShowTerminal(false)
                                         },
                                         initialPath = workspaceDir.absolutePath,
-                                        modifier = Modifier.fillMaxSize()
+                                        totalContainerHeight = totalContainerHeight,
+                                        modifier = Modifier.align(Alignment.BottomCenter)
                                     )
                                 } else if (showSettings) {
                                     SettingsScreen(
