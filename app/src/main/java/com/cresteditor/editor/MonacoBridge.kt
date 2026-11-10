@@ -14,6 +14,7 @@ class MonacoBridge(
 ) {
     private val TAG = "MonacoBridge"
     private var webView: WebView? = null
+    var onEditorFocusRequested: (() -> Unit)? = null
 
     fun setWebView(wv: WebView?) {
         this.webView = wv
@@ -22,6 +23,7 @@ class MonacoBridge(
 
     @JavascriptInterface
     fun showKeyboard() {
+        onEditorFocusRequested?.invoke()
         webView?.post {
             webView?.requestFocus()
             val imm = context?.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager

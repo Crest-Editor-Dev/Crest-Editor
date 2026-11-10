@@ -12,6 +12,9 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -21,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +45,12 @@ import com.cresteditor.ui.theme.*
 import com.cresteditor.workspace.WorkspaceManager
 import kotlinx.coroutines.launch
 import java.io.File
+
+enum class ActiveFocus {
+    NONE,
+    MONACO,
+    TERMINAL
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -79,6 +89,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         rootfsManager = RootfsManager(this)
@@ -595,6 +606,9 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                var activeFocus by remember { mutableStateOf(ActiveFocus.NONE) }
+                var terminalPanelHeight by remember { mutableStateOf(240.dp) }
+
                 ModalNavigationDrawer(
                     drawerState = drawerState,
                     gesturesEnabled = drawerState.isOpen,
@@ -612,6 +626,7 @@ class MainActivity : ComponentActivity() {
                                     scope.launch {
                                         drawerState.close()
                                         if (!item.isDirectory) {
+                                            activeFocus = ActiveFocus.MONACO
                                             viewModel.openFile(File(item.path), webView)
                                         }
                                     }
@@ -632,6 +647,7 @@ class MainActivity : ComponentActivity() {
                                     scope.launch {
                                         drawerState.close()
                                         viewModel.setShowTerminal(true)
+                                        activeFocus = ActiveFocus.TERMINAL
                                     }
                                 },
                                 onSettingsClick = {
@@ -647,142 +663,103 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) {
-                    Scaffold(
-                        topBar = {
-                            Column {
-                                CrestTopBar(
-                                    projectName = "workspace / " + (openTabs.find { it.id == activeTabId }?.title ?: ""),
-                                    onMenuClick = {
-                                        scope.launch {
-                                            if (drawerState.isClosed) drawerState.open() else drawerState.close()
-                                        }
-                                    },
-                                    onSaveClick = {
-                                        viewModel.requestSave(context, webView)
-                                    },
-                                    onUndoClick = {
-                                        MonacoBridge.undo(webView)
-                                    },
-                                    onRedoClick = {
-                                        MonacoBridge.redo(webView)
-                                    },
-                                    onSettingsClick = {
-                                        viewModel.setShowSettings(true)
-                                    },
-                                    onSearchClick = {
-                                        onToggleCommandPalette?.invoke("")
+                    val density = LocalDensity.current
+                    val imeBottomDp = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+                    val navBarBottomDp = with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
+                    val isKeyboardOpen = imeBottomDp > 0.dp
+
+                    val bottomBarHeight = 97.dp // 73dp ExtraKeysToolbar + 24dp CrestStatusBar
+                    val bottomControlsOcclusion = if (isKeyboardOpen) imeBottomDp + bottomBarHeight else navBarBottomDp + bottomBarHeight
+
+                    val targetTerminalBottom = when {
+                        !showTerminal -> 0.dp
+                        !isKeyboardOpen -> navBarBottomDp + bottomBarHeight
+                        activeFocus == ActiveFocus.TERMINAL -> bottomControlsOcclusion
+                        else -> 0.dp // Monaco focused while keyboard is open: terminal stays at bottom behind keyboard
+                    }
+
+                    val targetMonacoBottom = when {
+                        !showTerminal -> bottomControlsOcclusion
+                        !isKeyboardOpen -> navBarBottomDp + bottomBarHeight + terminalPanelHeight
+                        activeFocus == ActiveFocus.TERMINAL -> bottomControlsOcclusion + terminalPanelHeight
+                        else -> maxOf(bottomControlsOcclusion, terminalPanelHeight) // Terminal sits at bottom; visible only if taller than keyboard
+                    }
+
+                    val animatedTerminalBottom by animateDpAsState(
+                        targetValue = targetTerminalBottom,
+                        animationSpec = tween(durationMillis = 200),
+                        label = "animatedTerminalBottom"
+                    )
+
+                    val animatedMonacoBottom by animateDpAsState(
+                        targetValue = targetMonacoBottom,
+                        animationSpec = tween(durationMillis = 200),
+                        label = "animatedMonacoBottom"
+                    )
+
+                    val bottomBarBottomPadding by animateDpAsState(
+                        targetValue = if (isKeyboardOpen) imeBottomDp else navBarBottomDp,
+                        animationSpec = tween(durationMillis = 200),
+                        label = "bottomBarBottomPadding"
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(CrestBackground)
+                    ) {
+                        // Top Bar Area (includes status bar padding)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                        ) {
+                            CrestTopBar(
+                                projectName = "workspace / " + (openTabs.find { it.id == activeTabId }?.title ?: ""),
+                                onMenuClick = {
+                                    scope.launch {
+                                        if (drawerState.isClosed) drawerState.open() else drawerState.close()
                                     }
-                                )
-                                CrestTabBar(
-                                    tabs = openTabs,
-                                    activeTabId = activeTabId,
-                                    onTabSelect = { tabId ->
-                                        viewModel.openFile(File(tabId), webView)
-                                    },
-                                    onTabClose = { tabId ->
-                                        viewModel.closeTab(tabId, webView)
-                                    }
-                                )
-                            }
-                        },
-                        bottomBar = {
-                            Column {
-                                TermuxExtraKeysToolbar(
-                                    isCtrlActive = isCtrlActive,
-                                    isCtrlLocked = isCtrlLocked,
-                                    isAltActive = isAltActive,
-                                    isAltLocked = isAltLocked,
-                                    onToggleCtrl = {
-                                        if (isCtrlActive) {
-                                            isCtrlActive = false
-                                            isCtrlLocked = false
-                                        } else {
-                                            isCtrlActive = true
-                                            isCtrlLocked = false
-                                        }
-                                        TerminalSessionManager.activeClient?.isCtrlActive = isCtrlActive
-                                        TerminalSessionManager.activeClient?.isCtrlLocked = isCtrlLocked
-                                    },
-                                    onLockCtrl = {
-                                        isCtrlActive = true
-                                        isCtrlLocked = true
-                                        TerminalSessionManager.activeClient?.isCtrlActive = true
-                                        TerminalSessionManager.activeClient?.isCtrlLocked = true
-                                    },
-                                    onToggleAlt = {
-                                        if (isAltActive) {
-                                            isAltActive = false
-                                            isAltLocked = false
-                                        } else {
-                                            isAltActive = true
-                                            isAltLocked = false
-                                        }
-                                        TerminalSessionManager.activeClient?.isAltActive = isAltActive
-                                        TerminalSessionManager.activeClient?.isAltLocked = isAltLocked
-                                    },
-                                    onLockAlt = {
-                                        isAltActive = true
-                                        isAltLocked = true
-                                        TerminalSessionManager.activeClient?.isAltActive = true
-                                        TerminalSessionManager.activeClient?.isAltLocked = true
-                                    },
-                                    onToggleKeyboard = {
-                                        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                        if (showTerminal) {
-                                            TerminalSessionManager.activeClient?.terminalView?.let { view ->
-                                                view.requestFocus()
-                                                imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                                            }
-                                        } else {
-                                            webView?.let { wv ->
-                                                wv.requestFocus()
-                                                imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                                            }
-                                        }
-                                    },
-                                    onKeyClick = { key ->
-                                        if (showTerminal) {
-                                            TerminalSessionManager.activeSession?.write(key)
-                                        } else {
-                                            when (key) {
-                                                "\u001b" -> MonacoBridge.handleKey(webView, "ESC")
-                                                "\t" -> MonacoBridge.handleKey(webView, "TAB")
-                                                "\u001b[1~" -> MonacoBridge.handleKey(webView, "HOME")
-                                                "\u001b[4~" -> MonacoBridge.handleKey(webView, "END")
-                                                "\u001b[5~" -> MonacoBridge.handleKey(webView, "PGUP")
-                                                "\u001b[6~" -> MonacoBridge.handleKey(webView, "PGDN")
-                                                "\u001b[A" -> MonacoBridge.handleKey(webView, "UP")
-                                                "\u001b[B" -> MonacoBridge.handleKey(webView, "DOWN")
-                                                "\u001b[C" -> MonacoBridge.handleKey(webView, "RIGHT")
-                                                "\u001b[D" -> MonacoBridge.handleKey(webView, "LEFT")
-                                                else -> MonacoBridge.typeText(webView, key)
-                                            }
-                                        }
-                                        // Deactivate single-tap (non-locked) modifiers after key action
-                                        if (isCtrlActive && !isCtrlLocked) {
-                                            isCtrlActive = false
-                                            TerminalSessionManager.activeClient?.isCtrlActive = false
-                                        }
-                                        if (isAltActive && !isAltLocked) {
-                                            isAltActive = false
-                                            TerminalSessionManager.activeClient?.isAltActive = false
-                                        }
-                                    }
-                                )
-                                CrestStatusBar(
-                                    language = activeLanguage
-                                )
-                            }
+                                },
+                                onSaveClick = {
+                                    viewModel.requestSave(context, webView)
+                                },
+                                onUndoClick = {
+                                    MonacoBridge.undo(webView)
+                                },
+                                onRedoClick = {
+                                    MonacoBridge.redo(webView)
+                                },
+                                onSettingsClick = {
+                                    viewModel.setShowSettings(true)
+                                },
+                                onSearchClick = {
+                                    onToggleCommandPalette?.invoke("")
+                                }
+                            )
+                            CrestTabBar(
+                                tabs = openTabs,
+                                activeTabId = activeTabId,
+                                onTabSelect = { tabId ->
+                                    activeFocus = ActiveFocus.MONACO
+                                    viewModel.openFile(File(tabId), webView)
+                                },
+                                onTabClose = { tabId ->
+                                    viewModel.closeTab(tabId, webView)
+                                }
+                            )
                         }
-                    ) { innerPadding ->
+
+                        // Workspace Area
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(innerPadding)
+                                .fillMaxWidth()
+                                .weight(1f)
                         ) {
                             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                 val totalContainerHeight = maxHeight
 
+                                // Layer 0: Monaco Editor
                                 CrestEditorScreen(
                                     onWebViewCreated = { wv ->
                                         webView = wv
@@ -791,17 +768,33 @@ class MainActivity : ComponentActivity() {
                                             viewModel.openFile(File(activeTabId), wv)
                                         }
                                     },
-                                    bridge = monacoBridge
+                                    bridge = monacoBridge,
+                                    onEditorFocus = {
+                                        activeFocus = ActiveFocus.MONACO
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(bottom = animatedMonacoBottom)
                                 )
 
+                                // Layer 1: Terminal Screen
                                 if (showTerminal) {
                                     TerminalScreen(
                                         onClose = {
                                             viewModel.setShowTerminal(false)
+                                            activeFocus = ActiveFocus.MONACO
                                         },
                                         initialPath = workspaceDir.absolutePath,
                                         totalContainerHeight = totalContainerHeight,
-                                        modifier = Modifier.align(Alignment.BottomCenter)
+                                        onTerminalFocus = {
+                                            activeFocus = ActiveFocus.TERMINAL
+                                        },
+                                        onPanelHeightChanged = { h ->
+                                            terminalPanelHeight = h
+                                        },
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(bottom = animatedTerminalBottom)
                                     )
                                 } else if (showSettings) {
                                     SettingsScreen(
@@ -817,6 +810,7 @@ class MainActivity : ComponentActivity() {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
+                                            .padding(bottom = animatedMonacoBottom)
                                             .background(CrestBackground),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -842,6 +836,100 @@ class MainActivity : ComponentActivity() {
                                             )
                                         }
                                     }
+                                }
+
+                                // Layer 2: Bottom Toolbar & Status Bar (Floats above Terminal and Keyboard)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = bottomBarBottomPadding)
+                                ) {
+                                    TermuxExtraKeysToolbar(
+                                        isCtrlActive = isCtrlActive,
+                                        isCtrlLocked = isCtrlLocked,
+                                        isAltActive = isAltActive,
+                                        isAltLocked = isAltLocked,
+                                        onToggleCtrl = {
+                                            if (isCtrlActive) {
+                                                isCtrlActive = false
+                                                isCtrlLocked = false
+                                            } else {
+                                                isCtrlActive = true
+                                                isCtrlLocked = false
+                                            }
+                                            TerminalSessionManager.activeClient?.isCtrlActive = isCtrlActive
+                                            TerminalSessionManager.activeClient?.isCtrlLocked = isCtrlLocked
+                                        },
+                                        onLockCtrl = {
+                                            isCtrlActive = true
+                                            isCtrlLocked = true
+                                            TerminalSessionManager.activeClient?.isCtrlActive = true
+                                            TerminalSessionManager.activeClient?.isCtrlLocked = true
+                                        },
+                                        onToggleAlt = {
+                                            if (isAltActive) {
+                                                isAltActive = false
+                                                isAltLocked = false
+                                            } else {
+                                                isAltActive = true
+                                                isAltLocked = false
+                                            }
+                                            TerminalSessionManager.activeClient?.isAltActive = isAltActive
+                                            TerminalSessionManager.activeClient?.isAltLocked = isAltLocked
+                                        },
+                                        onLockAlt = {
+                                            isAltActive = true
+                                            isAltLocked = true
+                                            TerminalSessionManager.activeClient?.isAltActive = true
+                                            TerminalSessionManager.activeClient?.isAltLocked = true
+                                        },
+                                        onToggleKeyboard = {
+                                            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                                            if (activeFocus == ActiveFocus.TERMINAL) {
+                                                TerminalSessionManager.activeClient?.terminalView?.let { view ->
+                                                    view.requestFocus()
+                                                    imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                                                }
+                                            } else {
+                                                webView?.let { wv ->
+                                                    wv.requestFocus()
+                                                    imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                                                }
+                                            }
+                                        },
+                                        onKeyClick = { key ->
+                                            if (activeFocus == ActiveFocus.TERMINAL) {
+                                                TerminalSessionManager.activeSession?.write(key)
+                                            } else {
+                                                when (key) {
+                                                    "\u001b" -> MonacoBridge.handleKey(webView, "ESC")
+                                                    "\t" -> MonacoBridge.handleKey(webView, "TAB")
+                                                    "\u001b[1~" -> MonacoBridge.handleKey(webView, "HOME")
+                                                    "\u001b[4~" -> MonacoBridge.handleKey(webView, "END")
+                                                    "\u001b[5~" -> MonacoBridge.handleKey(webView, "PGUP")
+                                                    "\u001b[6~" -> MonacoBridge.handleKey(webView, "PGDN")
+                                                    "\u001b[A" -> MonacoBridge.handleKey(webView, "UP")
+                                                    "\u001b[B" -> MonacoBridge.handleKey(webView, "DOWN")
+                                                    "\u001b[C" -> MonacoBridge.handleKey(webView, "RIGHT")
+                                                    "\u001b[D" -> MonacoBridge.handleKey(webView, "LEFT")
+                                                    else -> MonacoBridge.typeText(webView, key)
+                                                }
+                                            }
+                                            // Deactivate single-tap (non-locked) modifiers after key action
+                                            if (isCtrlActive && !isCtrlLocked) {
+                                                isCtrlActive = false
+                                                TerminalSessionManager.activeClient?.isCtrlActive = false
+                                            }
+                                            if (isAltActive && !isAltLocked) {
+                                                isAltActive = false
+                                                TerminalSessionManager.activeClient?.isAltActive = false
+                                            }
+                                        }
+                                    )
+                                    CrestStatusBar(
+                                        language = activeLanguage
+                                    )
                                 }
                             }
                         }
@@ -904,7 +992,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CrestEditorScreen(
     onWebViewCreated: (WebView) -> Unit,
-    bridge: Any
+    bridge: MonacoBridge,
+    onEditorFocus: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val webView = remember {
@@ -953,6 +1043,7 @@ fun CrestEditorScreen(
 
             setOnTouchListener { v, event ->
                 if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                    onEditorFocus()
                     if (!v.hasFocus()) {
                         v.requestFocus()
                     }
@@ -961,19 +1052,27 @@ fun CrestEditorScreen(
                 false
             }
 
+            setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) {
+                    onEditorFocus()
+                }
+            }
+
             loadUrl("file:///android_asset/editor/index.html")
             onWebViewCreated(this)
         }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(bridge, onEditorFocus) {
+        bridge.onEditorFocusRequested = onEditorFocus
         onDispose {
+            bridge.onEditorFocusRequested = null
             webView.stopLoading()
         }
     }
 
     AndroidView(
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
         factory = { webView }
     )
 }
