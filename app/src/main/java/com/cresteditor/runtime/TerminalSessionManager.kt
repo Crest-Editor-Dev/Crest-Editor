@@ -20,6 +20,12 @@ object TerminalSessionManager {
             activeClient?.onModifiersChanged = value
         }
 
+    var onTerminalTap: (() -> Unit)? = null
+        set(value) {
+            field = value
+            activeClient?.onTerminalTap = value
+        }
+
     private var isInitializing = false
 
     fun getOrCreateSession(
@@ -58,6 +64,7 @@ object TerminalSessionManager {
                         onStatusUpdate("Void Linux Process Terminated")
                     }).apply {
                         onModifiersChanged = this@TerminalSessionManager.onModifiersChanged
+                        onTerminalTap = this@TerminalSessionManager.onTerminalTap
                     }
                     val session = rootfsManager.createTerminalSession(client, initialPath)
 

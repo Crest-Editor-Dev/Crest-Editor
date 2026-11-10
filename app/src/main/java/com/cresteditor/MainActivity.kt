@@ -98,6 +98,15 @@ class MainActivity : ComponentActivity() {
                 val showTerminal by viewModel.showTerminal.collectAsState()
                 val showSettings by viewModel.showSettings.collectAsState()
 
+                val isKeyboardOpen = rememberIsKeyboardOpen()
+                var isTerminalFocused by remember { mutableStateOf(false) }
+
+                LaunchedEffect(showTerminal) {
+                    if (showTerminal) {
+                        isTerminalFocused = true
+                    }
+                }
+
                 var showCommandPalette by remember { mutableStateOf(false) }
                 var commandPaletteInitialQuery by remember { mutableStateOf(">") }
                 var currentLineCount by remember { mutableStateOf(1) }
@@ -178,7 +187,9 @@ class MainActivity : ComponentActivity() {
                                 category = "View",
                                 shortcut = "Ctrl+`"
                             ) {
-                                viewModel.setShowTerminal(!viewModel.showTerminal.value)
+                                val next = !viewModel.showTerminal.value
+                                viewModel.setShowTerminal(next)
+                                if (next) isTerminalFocused = true
                             },
                             CommandItem(
                                 id = "workbench.action.openSettings",
@@ -531,6 +542,15 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                DisposableEffect(monacoBridge) {
+                    monacoBridge.onKeyboardRequested = {
+                        isTerminalFocused = false
+                    }
+                    onDispose {
+                        monacoBridge.onKeyboardRequested = null
+                    }
+                }
+
                 val workspaceDir = remember { WorkspaceManager.getWorkspaceDir(context) }
 
                 LaunchedEffect(Unit) {
@@ -632,6 +652,7 @@ class MainActivity : ComponentActivity() {
                                     scope.launch {
                                         drawerState.close()
                                         viewModel.setShowTerminal(true)
+                                        isTerminalFocused = true
                                     }
                                 },
                                 onSettingsClick = {
@@ -728,7 +749,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onToggleKeyboard = {
                                         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                        if (showTerminal) {
+                                        if (showTerminal && isTerminalFocused) {
                                             TerminalSessionManager.activeClient?.terminalView?.let { view ->
                                                 view.requestFocus()
                                                 imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
@@ -741,7 +762,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onKeyClick = { key ->
-                                        if (showTerminal) {
+                                        if (showTerminal && isTerminalFocused) {
                                             TerminalSessionManager.activeSession?.write(key)
                                         } else {
                                             when (key) {
@@ -791,7 +812,10 @@ class MainActivity : ComponentActivity() {
                                             viewModel.openFile(File(activeTabId), wv)
                                         }
                                     },
-                                    bridge = monacoBridge
+                                    bridge = monacoBridge,
+                                    onTouch = {
+                                        isTerminalFocused = false
+                                    }
                                 )
 
                                 if (showTerminal) {
@@ -801,6 +825,11 @@ class MainActivity : ComponentActivity() {
                                         },
                                         initialPath = workspaceDir.absolutePath,
                                         totalContainerHeight = totalContainerHeight,
+                                        isKeyboardOpen = isKeyboardOpen,
+                                        isTerminalFocused = isTerminalFocused,
+                                        onFocusTerminal = {
+                                            isTerminalFocused = true
+                                        },
                                         modifier = Modifier.align(Alignment.BottomCenter)
                                     )
                                 } else if (showSettings) {
@@ -883,7 +912,9 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                                 "workbench.view.terminal" -> {
-                                    viewModel.setShowTerminal(!viewModel.showTerminal.value)
+                                    val next = !viewModel.showTerminal.value
+                                    viewModel.setShowTerminal(next)
+                                    if (next) isTerminalFocused = true
                                 }
                                 "workbench.view.settings" -> {
                                     viewModel.setShowSettings(true)
@@ -904,7 +935,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CrestEditorScreen(
     onWebViewCreated: (WebView) -> Unit,
-    bridge: Any
+    bridge: Any,
+    onTouch: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val webView = remember {
@@ -953,6 +985,7 @@ fun CrestEditorScreen(
 
             setOnTouchListener { v, event ->
                 if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                    onTouch()
                     if (!v.hasFocus()) {
                         v.requestFocus()
                     }
@@ -976,4 +1009,28 @@ fun CrestEditorScreen(
         modifier = Modifier.fillMaxSize(),
         factory = { webView }
     )
+}
+
+@Composable
+fun rememberIsKeyboardOpen(): Boolean {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    var isKeyboardOpenByLayout by remember { mutableStateOf(false) }
+    val view = androidx.compose.ui.platform.LocalView.current
+
+    DisposableEffect(view) {
+        val listener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            val rect = android.graphics.Rect()
+            view.getWindowVisibleDisplayFrame(rect)
+            val screenHeight = view.rootView.height
+            val keypadHeight = screenHeight - rect.bottom
+            isKeyboardOpenByLayout = keypadHeight > screenHeight * 0.15
+        }
+        view.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        onDispose {
+            view.viewTreeObserver.removeOnGlobalLayoutListener(listener)
+        }
+    }
+
+    return (imeBottom > 0) || isKeyboardOpenByLayout
 }

@@ -94,7 +94,10 @@ open class NativeTerminalClient(
         return scale
     }
 
+    var onTerminalTap: (() -> Unit)? = null
+
     override fun onSingleTapUp(e: MotionEvent) {
+        onTerminalTap?.invoke()
         terminalView?.let { view ->
             view.requestFocus()
             val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager

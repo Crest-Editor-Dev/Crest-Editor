@@ -14,6 +14,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -36,6 +37,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -69,6 +71,9 @@ fun TerminalScreen(
     onClose: () -> Unit,
     initialPath: String? = null,
     totalContainerHeight: Dp = 600.dp,
+    isKeyboardOpen: Boolean = false,
+    isTerminalFocused: Boolean = true,
+    onFocusTerminal: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -90,11 +95,21 @@ fun TerminalScreen(
     val density = LocalDensity.current
     val totalHeightPx = with(density) { totalContainerHeight.toPx() }
 
-    val currentPanelHeight = if (isMaximized) {
+    val isCollapsedByEditor = isKeyboardOpen && !isTerminalFocused
+
+    val targetPanelHeight = if (isMaximized) {
         totalContainerHeight
+    } else if (isCollapsedByEditor) {
+        30.dp
     } else {
         (totalContainerHeight * panelHeightFraction).coerceIn(minHeight, totalContainerHeight)
     }
+
+    val currentPanelHeight by androidx.compose.animation.core.animateDpAsState(
+        targetValue = targetPanelHeight,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180),
+        label = "terminalPanelHeight"
+    )
 
     fun postStatus(status: String) {
         mainHandler.post {
@@ -161,50 +176,58 @@ fun TerminalScreen(
         modifier = modifier
             .fillMaxWidth()
             .height(currentPanelHeight)
+            .clipToBounds()
             .background(Color(0xFF0F172A))
     ) {
         // =====================================================================
         // 1. VS Code Draggable Splitter Handle (Overlays top border)
         // =====================================================================
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(10.dp)
-                .background(Color(0xFF1E1E1E))
-                .pointerInput(totalHeightPx) {
-                    detectVerticalDragGestures { change, dragAmount ->
-                        change.consume()
-                        // Dragging UP (-dragAmount) expands the bottom panel
-                        // Dragging DOWN (+dragAmount) shrinks the bottom panel
-                        val deltaFraction = -dragAmount / totalHeightPx
-                        panelHeightFraction = (panelHeightFraction + deltaFraction).coerceIn(0.15f, 0.95f)
-                        if (isMaximized) isMaximized = false
-                    }
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            isMaximized = !isMaximized
-                        }
-                    )
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            // 1px border line
+        if (!isCollapsedByEditor) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
-                    .background(Color(0xFF2B2B2B))
-                    .align(Alignment.TopCenter)
-            )
-            // Subtle centered grab pill
-            Box(
-                modifier = Modifier
-                    .width(36.dp)
-                    .height(3.dp)
-                    .background(Color(0xFF5A5D5E), RoundedCornerShape(1.5.dp))
-            )
+                    .height(10.dp)
+                    .background(Color(0xFF1E1E1E))
+                    .pointerInput(totalHeightPx) {
+                        detectVerticalDragGestures { change, dragAmount ->
+                            onFocusTerminal()
+                            change.consume()
+                            // Dragging UP (-dragAmount) expands the bottom panel
+                            // Dragging DOWN (+dragAmount) shrinks the bottom panel
+                            val deltaFraction = -dragAmount / totalHeightPx
+                            panelHeightFraction = (panelHeightFraction + deltaFraction).coerceIn(0.15f, 0.95f)
+                            if (isMaximized) isMaximized = false
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                onFocusTerminal()
+                            },
+                            onDoubleTap = {
+                                onFocusTerminal()
+                                isMaximized = !isMaximized
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                // 1px border line
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color(0xFF2B2B2B))
+                        .align(Alignment.TopCenter)
+                )
+                // Subtle centered grab pill
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(3.dp)
+                        .background(Color(0xFF5A5D5E), RoundedCornerShape(1.5.dp))
+                )
+            }
         }
 
         // =====================================================================
@@ -216,6 +239,12 @@ fun TerminalScreen(
                 .height(30.dp)
                 .background(Color(0xFF1E1E1E))
                 .border(width = 1.dp, color = Color(0xFF2B2B2B))
+                .clickable {
+                    if (isCollapsedByEditor) {
+                        onFocusTerminal()
+                        showKeyboard()
+                    }
+                }
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -257,9 +286,10 @@ fun TerminalScreen(
             Spacer(modifier = Modifier.width(8.dp))
 
             Text(
-                text = if (currentSession != null) "1: bash" else statusText,
+                text = if (isCollapsedByEditor) "▲ Tap to expand terminal" else (if (currentSession != null) "1: bash" else statusText),
                 fontSize = 11.sp,
-                color = Color(0xFF858585),
+                color = if (isCollapsedByEditor) Color(0xFF38BDF8) else Color(0xFF858585),
+                fontWeight = if (isCollapsedByEditor) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false)
@@ -268,80 +298,96 @@ fun TerminalScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             // Action Buttons
-            IconButton(
-                onClick = {
-                    currentSession = null
-                    activityLogs.clear()
-                    postStatus("Restarting Void Linux Session...")
-                    TerminalSessionManager.restartSession(
-                        context = context,
-                        initialPath = initialPath,
-                        onStatusUpdate = { postStatus(it) },
-                        onSessionReady = { session ->
-                            mainHandler.post {
-                                currentSession = session
-                                clientRef = TerminalSessionManager.activeClient
-                                terminalViewRef?.post {
-                                    val client = TerminalSessionManager.activeClient
-                                    if (client != null) {
-                                        client.terminalView = terminalViewRef
-                                        terminalViewRef?.setTerminalViewClient(client)
-                                        terminalViewRef?.attachSession(session)
-                                        terminalViewRef?.requestFocus()
-                                        showKeyboard()
+            if (!isCollapsedByEditor) {
+                IconButton(
+                    onClick = {
+                        onFocusTerminal()
+                        currentSession = null
+                        activityLogs.clear()
+                        postStatus("Restarting Void Linux Session...")
+                        TerminalSessionManager.restartSession(
+                            context = context,
+                            initialPath = initialPath,
+                            onStatusUpdate = { postStatus(it) },
+                            onSessionReady = { session ->
+                                mainHandler.post {
+                                    currentSession = session
+                                    clientRef = TerminalSessionManager.activeClient
+                                    terminalViewRef?.post {
+                                        val client = TerminalSessionManager.activeClient
+                                        if (client != null) {
+                                            client.terminalView = terminalViewRef
+                                            terminalViewRef?.setTerminalViewClient(client)
+                                            terminalViewRef?.attachSession(session)
+                                            terminalViewRef?.requestFocus()
+                                            showKeyboard()
+                                        }
                                     }
                                 }
                             }
-                        }
+                        )
+                    },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Codicons.Refresh,
+                        contentDescription = "Restart Terminal",
+                        tint = Color(0xFFC5C5C5),
+                        modifier = Modifier.size(15.dp)
                     )
+                }
+
+                Spacer(modifier = Modifier.width(2.dp))
+
+                IconButton(
+                    onClick = {
+                        onFocusTerminal()
+                        currentSession?.write("clear\r")
+                    },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Codicons.ClearAll,
+                        contentDescription = "Clear",
+                        tint = Color(0xFFC5C5C5),
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(2.dp))
+
+                IconButton(
+                    onClick = {
+                        onFocusTerminal()
+                        showKeyboard()
+                    },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Keyboard,
+                        contentDescription = "Show Keyboard",
+                        tint = Color(0xFFC5C5C5),
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(2.dp))
+            }
+
+            IconButton(
+                onClick = {
+                    if (isCollapsedByEditor) {
+                        onFocusTerminal()
+                        showKeyboard()
+                    } else {
+                        isMaximized = !isMaximized
+                    }
                 },
                 modifier = Modifier.size(24.dp)
             ) {
                 Icon(
-                    imageVector = Codicons.Refresh,
-                    contentDescription = "Restart Terminal",
-                    tint = Color(0xFFC5C5C5),
-                    modifier = Modifier.size(15.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(2.dp))
-
-            IconButton(
-                onClick = { currentSession?.write("clear\r") },
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Codicons.ClearAll,
-                    contentDescription = "Clear",
-                    tint = Color(0xFFC5C5C5),
-                    modifier = Modifier.size(15.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(2.dp))
-
-            IconButton(
-                onClick = { showKeyboard() },
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Keyboard,
-                    contentDescription = "Show Keyboard",
-                    tint = Color(0xFFC5C5C5),
-                    modifier = Modifier.size(15.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(2.dp))
-
-            IconButton(
-                onClick = { isMaximized = !isMaximized },
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = if (isMaximized) Codicons.ChevronDown else Codicons.ChevronUp,
-                    contentDescription = if (isMaximized) "Restore Panel" else "Maximize Panel",
+                    imageVector = if (isCollapsedByEditor) Codicons.ChevronUp else (if (isMaximized) Codicons.ChevronDown else Codicons.ChevronUp),
+                    contentDescription = if (isCollapsedByEditor) "Expand Terminal" else (if (isMaximized) "Restore Panel" else "Maximize Panel"),
                     tint = Color(0xFFC5C5C5),
                     modifier = Modifier.size(16.dp)
                 )
@@ -471,7 +517,13 @@ fun TerminalScreen(
     }
 
     DisposableEffect(Unit) {
+        TerminalSessionManager.onTerminalTap = {
+            mainHandler.post {
+                onFocusTerminal()
+            }
+        }
         onDispose {
+            TerminalSessionManager.onTerminalTap = null
             hideKeyboard()
         }
     }
