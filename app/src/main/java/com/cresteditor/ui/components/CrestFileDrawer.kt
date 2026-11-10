@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,11 +27,14 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cresteditor.ui.theme.*
@@ -120,6 +124,8 @@ fun CrestFileDrawer(
     var activeFolderTreePath by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var contextMenuItem by remember { mutableStateOf<FileTreeItem?>(null) }
+    val density = LocalDensity.current
+    var touchOffset by remember { mutableStateOf(DpOffset.Zero) }
     val context = LocalContext.current
     val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager }
 
@@ -390,35 +396,41 @@ fun CrestFileDrawer(
                                         .fillMaxWidth()
                                         .height(32.dp)
                                         .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
-                                        .combinedClickable(
-                                            onClick = {
-                                                if (isFolder) {
-                                                    if (isExpanded) {
-                                                        // Collapsing folder: remove from expandedPaths
-                                                        expandedPaths = expandedPaths - item.path
-                                                        if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${java.io.File.separator}"))) {
-                                                            val parentPath = java.io.File(item.path).parent
-                                                            val isParentExpanded = parentPath != null && expandedPaths.contains(parentPath)
-                                                            activeFolderTreePath = if (isParentExpanded) parentPath else null
+                                        .pointerInput(item.path) {
+                                            detectTapGestures(
+                                                onTap = {
+                                                    if (isFolder) {
+                                                        if (isExpanded) {
+                                                            // Collapsing folder: remove from expandedPaths
+                                                            expandedPaths = expandedPaths - item.path
+                                                            if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${java.io.File.separator}"))) {
+                                                                val parentPath = java.io.File(item.path).parent
+                                                                val isParentExpanded = parentPath != null && expandedPaths.contains(parentPath)
+                                                                activeFolderTreePath = if (isParentExpanded) parentPath else null
+                                                            }
+                                                        } else {
+                                                            // Expanding folder: add only this folder to expandedPaths
+                                                            expandedPaths = expandedPaths + item.path
+                                                            activeFolderTreePath = item.path
                                                         }
                                                     } else {
-                                                        // Expanding folder: add only this folder to expandedPaths
-                                                        expandedPaths = expandedPaths + item.path
-                                                        activeFolderTreePath = item.path
+                                                        onFileSelect(item)
+                                                        // When selecting a file, activate its parent folder tree guide
+                                                        val parentPath = java.io.File(item.path).parent
+                                                        if (parentPath != null && expandedPaths.contains(parentPath)) {
+                                                            activeFolderTreePath = parentPath
+                                                        }
                                                     }
-                                                } else {
-                                                    onFileSelect(item)
-                                                    // When selecting a file, activate its parent folder tree guide
-                                                    val parentPath = java.io.File(item.path).parent
-                                                    if (parentPath != null && expandedPaths.contains(parentPath)) {
-                                                        activeFolderTreePath = parentPath
-                                                    }
+                                                },
+                                                onLongPress = { offset ->
+                                                    touchOffset = DpOffset(
+                                                        x = with(density) { offset.x.toDp() },
+                                                        y = with(density) { offset.y.toDp() }
+                                                    )
+                                                    contextMenuItem = item
                                                 }
-                                            },
-                                            onLongClick = {
-                                                contextMenuItem = item
-                                            }
-                                        )
+                                            )
+                                        }
                                 ) {
                                     // 1. VS Code Active Indent Guide Line
                                     // Exact 1dp vertical line aligned under parent folder's chevron center
@@ -482,7 +494,13 @@ fun CrestFileDrawer(
 
                                         // Mobile touch context menu action
                                         IconButton(
-                                            onClick = { contextMenuItem = item },
+                                            onClick = {
+                                                touchOffset = DpOffset(
+                                                    x = 170.dp,
+                                                    y = 28.dp
+                                                )
+                                                contextMenuItem = item
+                                            },
                                             modifier = Modifier.size(24.dp)
                                         ) {
                                             Icon(
@@ -498,6 +516,7 @@ fun CrestFileDrawer(
                                     if (contextMenuItem == item) {
                                         VSCodeDropdownMenu(
                                             expanded = true,
+                                            offset = touchOffset,
                                             onDismissRequest = { contextMenuItem = null }
                                         ) {
                                             if (item.isDirectory) {
