@@ -669,14 +669,22 @@ class MainActivity : ComponentActivity() {
 
                     var measuredBottomBarHeight by remember { mutableStateOf(97.dp) }
                     val bottomBarBottomPadding = if (isKeyboardOpen) imeBottomDp else navBarBottomDp
-                    val bottomControlsOcclusion = bottomBarBottomPadding + measuredBottomBarHeight
 
-                    // Option A: Terminal ALWAYS sits directly on top of the bottom bar (ExtraKeysToolbar + CrestStatusBar)
-                    val terminalBottomPadding = if (showTerminal) bottomControlsOcclusion else 0.dp
-                    val monacoBottomPadding = if (showTerminal) {
-                        bottomControlsOcclusion + terminalPanelHeight
-                    } else {
-                        bottomControlsOcclusion
+                    val closedBottomControlsHeight = navBarBottomDp + measuredBottomBarHeight
+                    val openBottomControlsHeight = imeBottomDp + measuredBottomBarHeight
+
+                    // Terminal anchor: Anchored to Extra Key Bar top, never drops to 0dp into the floor
+                    val terminalBottomPadding = when {
+                        !showTerminal -> 0.dp
+                        activeFocus == ActiveFocus.TERMINAL && isKeyboardOpen -> openBottomControlsHeight
+                        else -> closedBottomControlsHeight
+                    }
+
+                    val monacoBottomPadding = when {
+                        !showTerminal -> if (isKeyboardOpen) openBottomControlsHeight else closedBottomControlsHeight
+                        activeFocus == ActiveFocus.TERMINAL && isKeyboardOpen -> openBottomControlsHeight + terminalPanelHeight
+                        isKeyboardOpen -> maxOf(openBottomControlsHeight, closedBottomControlsHeight + terminalPanelHeight)
+                        else -> closedBottomControlsHeight + terminalPanelHeight
                     }
 
                     Column(
