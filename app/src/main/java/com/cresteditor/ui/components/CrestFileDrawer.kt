@@ -17,12 +17,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -33,11 +37,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cresteditor.ui.theme.*
+import com.cresteditor.workspace.WorkspaceManager
 import java.io.File
 
 // =============================================================================
@@ -101,6 +107,16 @@ data class FileTreeItem(
  *    - Active open file highlighted in VS Code blue selection background
  *    - In-place Search view & Source Control view
  */
+data class InlineCreationState(
+    val isFolder: Boolean,
+    val parentPath: String? = null
+)
+
+sealed interface ExplorerRowItem {
+    data class Existing(val item: FileTreeItem) : ExplorerRowItem
+    data class InlineInput(val isFolder: Boolean, val level: Int, val parentPath: String?) : ExplorerRowItem
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CrestFileDrawer(
@@ -109,8 +125,7 @@ fun CrestFileDrawer(
     activeTabId: String = "",
     workspaceDir: File? = null,
     onFileSelect: (FileTreeItem) -> Unit = {},
-    onNewFileClick: (parentDir: File?) -> Unit = {},
-    onNewFolderClick: (parentDir: File?) -> Unit = {},
+    onCreateItem: (parentDir: File?, name: String, isFolder: Boolean) -> Unit = { _, _, _ -> },
     onRefreshClick: () -> Unit = {},
     onRenameClick: (FileTreeItem) -> Unit = {},
     onDeleteClick: (FileTreeItem) -> Unit = {},
@@ -125,11 +140,20 @@ fun CrestFileDrawer(
     var searchQuery by remember { mutableStateOf("") }
     var contextMenuItem by remember { mutableStateOf<FileTreeItem?>(null) }
     var showEmptyAreaMenu by remember { mutableStateOf(false) }
+    var inlineCreationState by remember { mutableStateOf<InlineCreationState?>(null) }
     val density = LocalDensity.current
     var touchOffset by remember { mutableStateOf(DpOffset.Zero) }
     var emptyAreaOffset by remember { mutableStateOf(DpOffset.Zero) }
     val context = LocalContext.current
     val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager }
+
+    fun startInlineCreation(isFolder: Boolean, parentPath: String? = null) {
+        if (parentPath != null) {
+            expandedPaths = expandedPaths + parentPath
+            activeFolderTreePath = parentPath
+        }
+        inlineCreationState = InlineCreationState(isFolder, parentPath)
+    }
 
     // Sync active tree with active file tab if no tree was explicitly focused yet
     LaunchedEffect(activeTabId, fileList) {
@@ -277,7 +301,7 @@ fun CrestFileDrawer(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             // New File
                             IconButton(
-                                onClick = { onNewFileClick(null) },
+                                onClick = { startInlineCreation(isFolder = false, parentPath = null) },
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
@@ -290,7 +314,7 @@ fun CrestFileDrawer(
 
                             // New Folder
                             IconButton(
-                                onClick = { onNewFolderClick(null) },
+                                onClick = { startInlineCreation(isFolder = true, parentPath = null) },
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
@@ -370,239 +394,295 @@ fun CrestFileDrawer(
                             }
                         }
 
+                        val explorerRowItems = remember(visibleFiles, inlineCreationState) {
+                            val result = mutableListOf<ExplorerRowItem>()
+                            val creation = inlineCreationState
+                            if (creation == null) {
+                                visibleFiles.mapTo(result) { ExplorerRowItem.Existing(it) }
+                            } else {
+                                if (creation.parentPath == null) {
+                                    result.add(ExplorerRowItem.InlineInput(isFolder = creation.isFolder, level = 0, parentPath = null))
+                                    visibleFiles.mapTo(result) { ExplorerRowItem.Existing(it) }
+                                } else {
+                                    val parentIdx = visibleFiles.indexOfFirst { it.path == creation.parentPath }
+                                    if (parentIdx != -1) {
+                                        val parentItem = visibleFiles[parentIdx]
+                                        val childLevel = parentItem.level + 1
+                                        for (i in 0..parentIdx) {
+                                            result.add(ExplorerRowItem.Existing(visibleFiles[i]))
+                                        }
+                                        result.add(ExplorerRowItem.InlineInput(isFolder = creation.isFolder, level = childLevel, parentPath = creation.parentPath))
+                                        for (i in (parentIdx + 1) until visibleFiles.size) {
+                                            result.add(ExplorerRowItem.Existing(visibleFiles[i]))
+                                        }
+                                    } else {
+                                        result.add(ExplorerRowItem.InlineInput(isFolder = creation.isFolder, level = 0, parentPath = null))
+                                        visibleFiles.mapTo(result) { ExplorerRowItem.Existing(it) }
+                                    }
+                                }
+                            }
+                            result
+                        }
+
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(vertical = 2.dp)
                         ) {
-                            items(visibleFiles, key = { it.path }) { item ->
-                                val isFolder = item.isDirectory
-                                val isExpanded = expandedPaths.contains(item.path)
-                                val isActive = !isFolder && item.path == activeTabId
-
-                                // VS Code Indent Guide: only show guide for descendants of the latest open folder tree
-                                val isInsideActiveTree = remember(activeFolderItem, item.path) {
-                                    if (activeFolderItem == null) false
-                                    else {
-                                        val prefix = if (activeFolderItem.path.endsWith(java.io.File.separator)) {
-                                            activeFolderItem.path
-                                        } else {
-                                            "${activeFolderItem.path}${java.io.File.separator}"
-                                        }
-                                        item.path.startsWith(prefix)
-                                    }
+                            items(explorerRowItems, key = { row ->
+                                when (row) {
+                                    is ExplorerRowItem.Existing -> row.item.path
+                                    is ExplorerRowItem.InlineInput -> "__inline_creation__"
                                 }
+                            }) { row ->
+                                when (row) {
+                                    is ExplorerRowItem.InlineInput -> {
+                                        InlineCreationTreeRow(
+                                            isFolder = row.isFolder,
+                                            level = row.level,
+                                            parentPath = row.parentPath,
+                                            workspaceDir = workspaceDir,
+                                            onCommit = { name ->
+                                                val targetDir = if (row.parentPath != null) File(row.parentPath) else workspaceDir
+                                                onCreateItem(targetDir, name, row.isFolder)
+                                                inlineCreationState = null
+                                            },
+                                            onCancel = {
+                                                inlineCreationState = null
+                                            }
+                                        )
+                                    }
+                                    is ExplorerRowItem.Existing -> {
+                                        val item = row.item
+                                        val isFolder = item.isDirectory
+                                        val isExpanded = expandedPaths.contains(item.path)
+                                        val isActive = !isFolder && item.path == activeTabId
 
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(32.dp)
-                                        .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
-                                        .pointerInput(item.path) {
-                                            detectTapGestures(
-                                                onTap = {
-                                                    if (isFolder) {
-                                                        if (isExpanded) {
-                                                            // Collapsing folder: remove from expandedPaths
-                                                            expandedPaths = expandedPaths - item.path
-                                                            if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${java.io.File.separator}"))) {
-                                                                val parentPath = java.io.File(item.path).parent
-                                                                val isParentExpanded = parentPath != null && expandedPaths.contains(parentPath)
-                                                                activeFolderTreePath = if (isParentExpanded) parentPath else null
-                                                            }
-                                                        } else {
-                                                            // Expanding folder: add only this folder to expandedPaths
-                                                            expandedPaths = expandedPaths + item.path
-                                                            activeFolderTreePath = item.path
-                                                        }
-                                                    } else {
-                                                        onFileSelect(item)
-                                                        // When selecting a file, activate its parent folder tree guide
-                                                        val parentPath = java.io.File(item.path).parent
-                                                        if (parentPath != null && expandedPaths.contains(parentPath)) {
-                                                            activeFolderTreePath = parentPath
-                                                        }
-                                                    }
-                                                },
-                                                onLongPress = { offset ->
-                                                    touchOffset = DpOffset(
-                                                        x = with(density) { offset.x.toDp() },
-                                                        y = with(density) { offset.y.toDp() }
-                                                    )
-                                                    contextMenuItem = item
+                                        // VS Code Indent Guide: only show guide for descendants of the latest open folder tree
+                                        val isInsideActiveTree = remember(activeFolderItem, item.path) {
+                                            if (activeFolderItem == null) false
+                                            else {
+                                                val prefix = if (activeFolderItem.path.endsWith(java.io.File.separator)) {
+                                                    activeFolderItem.path
+                                                } else {
+                                                    "${activeFolderItem.path}${java.io.File.separator}"
                                                 }
-                                            )
+                                                item.path.startsWith(prefix)
+                                            }
                                         }
-                                ) {
-                                    // 1. VS Code Active Indent Guide Line
-                                    // Exact 1dp vertical line aligned under parent folder's chevron center
-                                    if (isInsideActiveTree && activeFolderItem != null) {
-                                        val guideX = (activeFolderItem.level * 14 + 17).dp
+
                                         Box(
                                             modifier = Modifier
-                                                .padding(start = guideX)
-                                                .width(1.dp)
-                                                .fillMaxHeight()
-                                                .background(VSCodeTreeIndentGuideActive)
-                                        )
-                                    }
-
-                                    // 2. Tree Item Content Row
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(start = (item.level * 14 + 8).dp, end = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // Exact VS Code Seti Style:
-                                        // Sibling folder arrow and file icon start at the EXACT same position!
-                                        // Children inside a folder are indented ahead by level * 14.dp
-                                        Box(
-                                            modifier = Modifier.size(18.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (isFolder) {
-                                                Icon(
-                                                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
-                                                    contentDescription = null,
-                                                    tint = VSCodeActivityBarInactive,
-                                                    modifier = Modifier.size(17.dp)
-                                                )
-                                            } else {
-                                                val iconData = getFileIcon(item.name)
-                                                Icon(
-                                                    imageVector = iconData.first,
-                                                    contentDescription = null,
-                                                    tint = iconData.second,
-                                                    modifier = Modifier.size(17.dp)
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.width(8.dp))
-
-                                        // Name
-                                        Text(
-                                            text = item.name,
-                                            color = if (isActive) VSCodeTextActive else VSCodeTextPrimary,
-                                            fontSize = 14.sp,
-                                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        )
-
-                                        Spacer(modifier = Modifier.weight(1f))
-
-                                        // Mobile touch context menu action
-                                        IconButton(
-                                            onClick = {
-                                                touchOffset = DpOffset(
-                                                    x = 170.dp,
-                                                    y = 28.dp
-                                                )
-                                                contextMenuItem = item
-                                            },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.MoreVert,
-                                                contentDescription = "More actions",
-                                                tint = if (isActive) VSCodeTextActive.copy(alpha = 0.7f) else VSCodeActivityBarInactive.copy(alpha = 0.45f),
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                        }
-                                    }
-
-                                    // VS Code Standard Context Menu (No icons/emojis, consistent common component)
-                                    if (contextMenuItem == item) {
-                                        VSCodeDropdownMenu(
-                                            expanded = true,
-                                            offset = touchOffset,
-                                            onDismissRequest = { contextMenuItem = null }
-                                        ) {
-                                            if (item.isDirectory) {
-                                                VSCodeMenuItem(
-                                                    text = "New File...",
-                                                    onClick = {
-                                                        contextMenuItem = null
-                                                        onNewFileClick(File(item.path))
-                                                    }
-                                                )
-                                                VSCodeMenuItem(
-                                                    text = "New Folder...",
-                                                    onClick = {
-                                                        contextMenuItem = null
-                                                        onNewFolderClick(File(item.path))
-                                                    }
-                                                )
-                                                VSCodeMenuSeparator()
-                                            }
-
-                                            VSCodeMenuItem(
-                                                text = "Cut",
-                                                shortcut = "Ctrl+X",
-                                                enabled = false,
-                                                onClick = { contextMenuItem = null }
-                                            )
-                                            VSCodeMenuItem(
-                                                text = "Copy",
-                                                shortcut = "Ctrl+C",
-                                                enabled = false,
-                                                onClick = { contextMenuItem = null }
-                                            )
-                                            VSCodeMenuItem(
-                                                text = "Paste",
-                                                shortcut = "Ctrl+V",
-                                                enabled = false,
-                                                onClick = { contextMenuItem = null }
-                                            )
-
-                                            VSCodeMenuSeparator()
-
-                                            VSCodeMenuItem(
-                                                text = "Copy Path",
-                                                onClick = {
-                                                    contextMenuItem = null
-                                                    clipboard?.setPrimaryClip(ClipData.newPlainText("path", item.path))
-                                                    Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
-                                                }
-                                            )
-                                            VSCodeMenuItem(
-                                                text = "Copy Relative Path",
-                                                onClick = {
-                                                    contextMenuItem = null
-                                                    val relPath = if (workspaceDir != null) {
-                                                        try {
-                                                            File(item.path).relativeTo(workspaceDir).path
-                                                        } catch (_: Exception) {
-                                                            item.name
+                                                .fillMaxWidth()
+                                                .height(32.dp)
+                                                .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
+                                                .pointerInput(item.path) {
+                                                    detectTapGestures(
+                                                        onTap = {
+                                                            if (isFolder) {
+                                                                if (isExpanded) {
+                                                                    // Collapsing folder: remove from expandedPaths
+                                                                    expandedPaths = expandedPaths - item.path
+                                                                    if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${java.io.File.separator}"))) {
+                                                                        val parentPath = java.io.File(item.path).parent
+                                                                        val isParentExpanded = parentPath != null && expandedPaths.contains(parentPath)
+                                                                        activeFolderTreePath = if (isParentExpanded) parentPath else null
+                                                                    }
+                                                                } else {
+                                                                    // Expanding folder: add only this folder to expandedPaths
+                                                                    expandedPaths = expandedPaths + item.path
+                                                                    activeFolderTreePath = item.path
+                                                                }
+                                                            } else {
+                                                                onFileSelect(item)
+                                                                // When selecting a file, activate its parent folder tree guide
+                                                                val parentPath = java.io.File(item.path).parent
+                                                                if (parentPath != null && expandedPaths.contains(parentPath)) {
+                                                                    activeFolderTreePath = parentPath
+                                                                }
+                                                            }
+                                                        },
+                                                        onLongPress = { offset ->
+                                                            touchOffset = DpOffset(
+                                                                x = with(density) { offset.x.toDp() },
+                                                                y = with(density) { offset.y.toDp() }
+                                                            )
+                                                            contextMenuItem = item
                                                         }
-                                                    } else item.name
-                                                    clipboard?.setPrimaryClip(ClipData.newPlainText("relative_path", relPath))
-                                                    Toast.makeText(context, "Relative path copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                    )
                                                 }
-                                            )
+                                        ) {
+                                            // 1. VS Code Active Indent Guide Line
+                                            // Exact 1dp vertical line aligned under parent folder's chevron center
+                                            if (isInsideActiveTree && activeFolderItem != null) {
+                                                val guideX = (activeFolderItem.level * 14 + 17).dp
+                                                Box(
+                                                    modifier = Modifier
+                                                        .padding(start = guideX)
+                                                        .width(1.dp)
+                                                        .fillMaxHeight()
+                                                        .background(VSCodeTreeIndentGuideActive)
+                                                )
+                                            }
 
-                                            VSCodeMenuSeparator()
+                                            // 2. Tree Item Content Row
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(start = (item.level * 14 + 8).dp, end = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Exact VS Code Seti Style:
+                                                // Sibling folder arrow and file icon start at the EXACT same position!
+                                                // Children inside a folder are indented ahead by level * 14.dp
+                                                Box(
+                                                    modifier = Modifier.size(18.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (isFolder) {
+                                                        Icon(
+                                                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                                                            contentDescription = null,
+                                                            tint = VSCodeActivityBarInactive,
+                                                            modifier = Modifier.size(17.dp)
+                                                        )
+                                                    } else {
+                                                        val iconData = getFileIcon(item.name)
+                                                        Icon(
+                                                            imageVector = iconData.first,
+                                                            contentDescription = null,
+                                                            tint = iconData.second,
+                                                            modifier = Modifier.size(17.dp)
+                                                        )
+                                                    }
+                                                }
 
-                                            VSCodeMenuItem(
-                                                text = "Rename...",
-                                                shortcut = "F2",
-                                                onClick = {
-                                                    contextMenuItem = null
-                                                    onRenameClick(item)
+                                                Spacer(modifier = Modifier.width(8.dp))
+
+                                                // Name
+                                                Text(
+                                                    text = item.name,
+                                                    color = if (isActive) VSCodeTextActive else VSCodeTextPrimary,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f, fill = false)
+                                                )
+
+                                                Spacer(modifier = Modifier.weight(1f))
+
+                                                // Mobile touch context menu action
+                                                IconButton(
+                                                    onClick = {
+                                                        touchOffset = DpOffset(
+                                                            x = 170.dp,
+                                                            y = 28.dp
+                                                        )
+                                                        contextMenuItem = item
+                                                    },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.MoreVert,
+                                                        contentDescription = "More actions",
+                                                        tint = if (isActive) VSCodeTextActive.copy(alpha = 0.7f) else VSCodeActivityBarInactive.copy(alpha = 0.45f),
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
                                                 }
-                                            )
-                                            VSCodeMenuItem(
-                                                text = "Delete",
-                                                shortcut = "Del",
-                                                isDestructive = true,
-                                                onClick = {
-                                                    contextMenuItem = null
-                                                    onDeleteClick(item)
+                                            }
+
+                                            // VS Code Standard Context Menu (No icons/emojis, consistent common component)
+                                            if (contextMenuItem == item) {
+                                                VSCodeDropdownMenu(
+                                                    expanded = true,
+                                                    offset = touchOffset,
+                                                    onDismissRequest = { contextMenuItem = null }
+                                                ) {
+                                                    if (item.isDirectory) {
+                                                        VSCodeMenuItem(
+                                                            text = "New File...",
+                                                            onClick = {
+                                                                contextMenuItem = null
+                                                                startInlineCreation(isFolder = false, parentPath = item.path)
+                                                            }
+                                                        )
+                                                        VSCodeMenuItem(
+                                                            text = "New Folder...",
+                                                            onClick = {
+                                                                contextMenuItem = null
+                                                                startInlineCreation(isFolder = true, parentPath = item.path)
+                                                            }
+                                                        )
+                                                        VSCodeMenuSeparator()
+                                                    }
+
+                                                    VSCodeMenuItem(
+                                                        text = "Cut",
+                                                        shortcut = "Ctrl+X",
+                                                        enabled = false,
+                                                        onClick = { contextMenuItem = null }
+                                                    )
+                                                    VSCodeMenuItem(
+                                                        text = "Copy",
+                                                        shortcut = "Ctrl+C",
+                                                        enabled = false,
+                                                        onClick = { contextMenuItem = null }
+                                                    )
+                                                    VSCodeMenuItem(
+                                                        text = "Paste",
+                                                        shortcut = "Ctrl+V",
+                                                        enabled = false,
+                                                        onClick = { contextMenuItem = null }
+                                                    )
+
+                                                    VSCodeMenuSeparator()
+
+                                                    VSCodeMenuItem(
+                                                        text = "Copy Path",
+                                                        onClick = {
+                                                            contextMenuItem = null
+                                                            clipboard?.setPrimaryClip(ClipData.newPlainText("path", item.path))
+                                                            Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    )
+                                                    VSCodeMenuItem(
+                                                        text = "Copy Relative Path",
+                                                        onClick = {
+                                                            contextMenuItem = null
+                                                            val relPath = if (workspaceDir != null) {
+                                                                try {
+                                                                    File(item.path).relativeTo(workspaceDir).path
+                                                                } catch (_: Exception) {
+                                                                    item.name
+                                                                }
+                                                            } else item.name
+                                                            clipboard?.setPrimaryClip(ClipData.newPlainText("relative_path", relPath))
+                                                            Toast.makeText(context, "Relative path copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    )
+
+                                                    VSCodeMenuSeparator()
+
+                                                    VSCodeMenuItem(
+                                                        text = "Rename...",
+                                                        shortcut = "F2",
+                                                        onClick = {
+                                                            contextMenuItem = null
+                                                            onRenameClick(item)
+                                                        }
+                                                    )
+                                                    VSCodeMenuItem(
+                                                        text = "Delete",
+                                                        shortcut = "Del",
+                                                        isDestructive = true,
+                                                        onClick = {
+                                                            contextMenuItem = null
+                                                            onDeleteClick(item)
+                                                        }
+                                                    )
                                                 }
-                                            )
+                                            }
                                         }
                                     }
                                 }
@@ -636,14 +716,14 @@ fun CrestFileDrawer(
                                                 text = "New File...",
                                                 onClick = {
                                                     showEmptyAreaMenu = false
-                                                    onNewFileClick(null)
+                                                    startInlineCreation(isFolder = false, parentPath = null)
                                                 }
                                             )
                                             VSCodeMenuItem(
                                                 text = "New Folder...",
                                                 onClick = {
                                                     showEmptyAreaMenu = false
-                                                    onNewFolderClick(null)
+                                                    startInlineCreation(isFolder = true, parentPath = null)
                                                 }
                                             )
                                             VSCodeMenuSeparator()
@@ -910,5 +990,178 @@ internal fun getFileIcon(filename: String): Pair<ImageVector, Color> {
         "xml" -> Pair(Icons.Default.Code, ColorXml)
         "sh", "bash" -> Pair(Icons.Default.Terminal, ColorKotlin)
         else -> Pair(Icons.Default.InsertDriveFile, VSCodeTextPrimary)
+    }
+}
+
+/**
+ * Exact VS Code In-Place Tree Row for File / Folder Creation.
+ * Features:
+ * - Dynamic Seti file icon based on real-time typed extension
+ * - 1px #007ACC focus border (#BE1100 on validation error)
+ * - Auto-focus with software keyboard (IME Done = Commit)
+ * - VS Code Floating Error Tooltip (#5A1D1D) on validation error
+ * - Fast touch Checkmark / Close actions
+ */
+@Composable
+private fun InlineCreationTreeRow(
+    isFolder: Boolean,
+    level: Int,
+    parentPath: String?,
+    workspaceDir: File?,
+    onCommit: (String) -> Unit,
+    onCancel: () -> Unit
+) {
+    var inputText by remember { mutableStateOf("") }
+    var validationError by remember { mutableStateOf<String?>(null) }
+    val focusRequester = remember { FocusRequester() }
+
+    val targetDir = remember(parentPath, workspaceDir) {
+        if (parentPath != null) File(parentPath) else workspaceDir
+    }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(30.dp)
+                .padding(start = (level * 14 + 8).dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(18.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isFolder) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = ColorFolder,
+                        modifier = Modifier.size(17.dp)
+                    )
+                } else {
+                    val iconData = getFileIcon(inputText)
+                    Icon(
+                        imageVector = iconData.first,
+                        contentDescription = null,
+                        tint = iconData.second,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            val borderColor = if (validationError != null) Color(0xFFBE1100) else Color(0xFF007ACC)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(26.dp)
+                    .background(Color(0xFF313131), RoundedCornerShape(2.dp))
+                    .border(1.dp, borderColor, RoundedCornerShape(2.dp))
+                    .padding(horizontal = 6.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                BasicTextField(
+                    value = inputText,
+                    onValueChange = { newText ->
+                        inputText = newText
+                        validationError = if (targetDir != null && newText.isNotEmpty()) {
+                            WorkspaceManager.validateName(targetDir, newText)
+                        } else null
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Default
+                    ),
+                    cursorBrush = SolidColor(Color(0xFF007ACC)),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            val trimmed = inputText.trim()
+                            if (trimmed.isEmpty()) {
+                                onCancel()
+                            } else {
+                                val err = targetDir?.let { WorkspaceManager.validateName(it, trimmed) }
+                                if (err != null) {
+                                    validationError = err
+                                } else {
+                                    onCommit(trimmed)
+                                }
+                            }
+                        }
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            IconButton(
+                onClick = {
+                    val trimmed = inputText.trim()
+                    if (trimmed.isEmpty()) {
+                        onCancel()
+                    } else {
+                        val err = targetDir?.let { WorkspaceManager.validateName(it, trimmed) }
+                        if (err != null) {
+                            validationError = err
+                        } else {
+                            onCommit(trimmed)
+                        }
+                    }
+                },
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Create",
+                    tint = Color(0xFF007ACC),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            IconButton(
+                onClick = onCancel,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Cancel",
+                    tint = Color(0xFF858585),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+
+        if (validationError != null) {
+            Box(
+                modifier = Modifier
+                    .padding(start = (level * 14 + 32).dp, end = 12.dp, top = 2.dp)
+                    .background(Color(0xFF5A1D1D), RoundedCornerShape(2.dp))
+                    .border(1.dp, Color(0xFFBE1100), RoundedCornerShape(2.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = validationError!!,
+                    color = Color(0xFFCCCCCC),
+                    fontSize = 11.5.sp,
+                    lineHeight = 14.sp
+                )
+            }
+        }
     }
 }

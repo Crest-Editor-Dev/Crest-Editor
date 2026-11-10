@@ -134,14 +134,18 @@ class MainActivity : ComponentActivity() {
                                 title = "File: New File",
                                 category = "File"
                             ) {
-                                viewModel.openCreateDialog(isFolder = false)
+                                scope.launch {
+                                    if (drawerState.isClosed) drawerState.open()
+                                }
                             },
                             CommandItem(
                                 id = "workbench.action.files.newFolder",
                                 title = "File: New Folder",
                                 category = "File"
                             ) {
-                                viewModel.openCreateDialog(isFolder = true)
+                                scope.launch {
+                                    if (drawerState.isClosed) drawerState.open()
+                                }
                             },
                             CommandItem(
                                 id = "workbench.action.closeActiveEditor",
@@ -496,10 +500,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                val showCreateDialog by viewModel.showCreateDialog.collectAsState()
-                val isFolderCreation by viewModel.isFolderCreation.collectAsState()
-                val newNameInput by viewModel.newNameInput.collectAsState()
-                val validationError by viewModel.validationError.collectAsState()
                 val showRenameDialog by viewModel.showRenameDialog.collectAsState()
                 val renameTargetItem by viewModel.renameTargetItem.collectAsState()
                 val renameInput by viewModel.renameInput.collectAsState()
@@ -556,65 +556,6 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         viewModel.clearToastMessage()
                     }
-                }
-
-                // Creation Dialog
-                if (showCreateDialog) {
-                    AlertDialog(
-                        onDismissRequest = {
-                            viewModel.closeCreateDialog()
-                        },
-                        title = {
-                            Text(
-                                text = if (isFolderCreation) "New Folder" else "New File",
-                                color = CrestTextActive
-                            )
-                        },
-                        text = {
-                            Column {
-                                OutlinedTextField(
-                                    value = newNameInput,
-                                    onValueChange = { valStr ->
-                                        viewModel.updateNewNameInput(context, valStr)
-                                    },
-                                    label = { Text(if (isFolderCreation) "Folder Name" else "File Name") },
-                                    singleLine = true,
-                                    isError = validationError != null,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = CrestAccentPrimary,
-                                        focusedLabelColor = CrestAccentPrimary
-                                    )
-                                )
-                                if (validationError != null) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = validationError!!,
-                                        color = CrestAccentRed,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    viewModel.createNewItem(context, webView)
-                                }
-                            ) {
-                                Text("Create", color = CrestAccentPrimary)
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = {
-                                    viewModel.closeCreateDialog()
-                                }
-                            ) {
-                                Text("Cancel", color = CrestTextSecondary)
-                            }
-                        },
-                        containerColor = CrestSurfaceHeader
-                    )
                 }
 
                 // Rename Dialog
@@ -739,11 +680,8 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onNewFileClick = { parentDir ->
-                                    viewModel.openCreateDialog(isFolder = false, parentDir = parentDir)
-                                },
-                                onNewFolderClick = { parentDir ->
-                                    viewModel.openCreateDialog(isFolder = true, parentDir = parentDir)
+                                onCreateItem = { parentDir, name, isFolder ->
+                                    viewModel.createNewItemDirect(parentDir, name, isFolder, webView, this@MainActivity)
                                 },
                                 onRefreshClick = {
                                     viewModel.refreshWorkspace(this@MainActivity)

@@ -343,6 +343,33 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    fun createNewItemDirect(parentDir: File?, name: String, isFolder: Boolean, webView: WebView?, context: Context) {
+        viewModelScope.launch {
+            val targetDir = parentDir ?: WorkspaceManager.getWorkspaceDir(context)
+            val trimmed = name.trim()
+            val err = WorkspaceManager.validateName(targetDir, trimmed)
+            if (err != null) {
+                _toastMessage.value = err
+                return@launch
+            }
+
+            val result = if (isFolder) {
+                WorkspaceManager.createNewFolder(targetDir, trimmed)
+            } else {
+                WorkspaceManager.createNewFile(targetDir, trimmed)
+            }
+
+            result.onSuccess { createdFile ->
+                refreshWorkspace(context)
+                if (!createdFile.isDirectory) {
+                    openFile(createdFile, webView)
+                }
+            }.onFailure { ex ->
+                _toastMessage.value = ex.message ?: "Creation failed."
+            }
+        }
+    }
+
     fun openDeleteDialog(item: FileTreeItem) {
         _deleteTargetItem.value = item
         _showDeleteDialog.value = true
