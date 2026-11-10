@@ -124,8 +124,10 @@ fun CrestFileDrawer(
     var activeFolderTreePath by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var contextMenuItem by remember { mutableStateOf<FileTreeItem?>(null) }
+    var showEmptyAreaMenu by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     var touchOffset by remember { mutableStateOf(DpOffset.Zero) }
+    var emptyAreaOffset by remember { mutableStateOf(DpOffset.Zero) }
     val context = LocalContext.current
     val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager }
 
@@ -599,6 +601,73 @@ fun CrestFileDrawer(
                                                 onClick = {
                                                     contextMenuItem = null
                                                     onDeleteClick(item)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. Empty / Blank Area of Explorer (VS Code Root Context Menu)
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 400.dp)
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onLongPress = { offset ->
+                                                    emptyAreaOffset = DpOffset(
+                                                        x = with(density) { offset.x.toDp() },
+                                                        y = with(density) { offset.y.toDp() }
+                                                    )
+                                                    showEmptyAreaMenu = true
+                                                }
+                                            )
+                                        }
+                                ) {
+                                    if (showEmptyAreaMenu) {
+                                        VSCodeDropdownMenu(
+                                            expanded = true,
+                                            offset = emptyAreaOffset,
+                                            onDismissRequest = { showEmptyAreaMenu = false }
+                                        ) {
+                                            VSCodeMenuItem(
+                                                text = "New File...",
+                                                onClick = {
+                                                    showEmptyAreaMenu = false
+                                                    onNewFileClick(null)
+                                                }
+                                            )
+                                            VSCodeMenuItem(
+                                                text = "New Folder...",
+                                                onClick = {
+                                                    showEmptyAreaMenu = false
+                                                    onNewFolderClick(null)
+                                                }
+                                            )
+                                            VSCodeMenuSeparator()
+                                            VSCodeMenuItem(
+                                                text = "Paste",
+                                                shortcut = "Ctrl+V",
+                                                enabled = false,
+                                                onClick = { showEmptyAreaMenu = false }
+                                            )
+                                            VSCodeMenuSeparator()
+                                            VSCodeMenuItem(
+                                                text = "Copy Path",
+                                                onClick = {
+                                                    showEmptyAreaMenu = false
+                                                    clipboard?.setPrimaryClip(ClipData.newPlainText("path", workspaceDir?.absolutePath ?: ""))
+                                                    Toast.makeText(context, "Workspace path copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                }
+                                            )
+                                            VSCodeMenuSeparator()
+                                            VSCodeMenuItem(
+                                                text = "Open in Integrated Terminal",
+                                                onClick = {
+                                                    showEmptyAreaMenu = false
+                                                    onTerminalClick()
                                                 }
                                             )
                                         }
