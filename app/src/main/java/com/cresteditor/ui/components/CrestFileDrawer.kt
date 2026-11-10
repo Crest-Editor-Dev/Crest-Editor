@@ -546,7 +546,7 @@ fun CrestFileDrawer(
                                                 .fillMaxWidth()
                                                 .height(32.dp)
                                                 .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
-                                                .pointerInput(item.path, inlineOpState) {
+                                                .pointerInput(item.path, isExpanded, inlineOpState) {
                                                     detectTapGestures(
                                                         onTap = {
                                                             if (inlineOpState != null) {
@@ -554,7 +554,7 @@ fun CrestFileDrawer(
                                                                 return@detectTapGestures
                                                             }
                                                             if (isFolder) {
-                                                                if (isExpanded) {
+                                                                if (expandedPaths.contains(item.path)) {
                                                                     // Collapsing folder: remove from expandedPaths
                                                                     expandedPaths = expandedPaths - item.path
                                                                     if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${java.io.File.separator}"))) {
