@@ -40,6 +40,9 @@ class MainViewModel : ViewModel() {
     private val _showCreateDialog = MutableStateFlow(false)
     val showCreateDialog: StateFlow<Boolean> = _showCreateDialog.asStateFlow()
 
+    private val _createParentDir = MutableStateFlow<File?>(null)
+    val createParentDir: StateFlow<File?> = _createParentDir.asStateFlow()
+
     private val _showRenameDialog = MutableStateFlow(false)
     val showRenameDialog: StateFlow<Boolean> = _showRenameDialog.asStateFlow()
 
@@ -51,6 +54,12 @@ class MainViewModel : ViewModel() {
 
     private val _renameValidationError = MutableStateFlow<String?>(null)
     val renameValidationError: StateFlow<String?> = _renameValidationError.asStateFlow()
+
+    private val _showDeleteDialog = MutableStateFlow(false)
+    val showDeleteDialog: StateFlow<Boolean> = _showDeleteDialog.asStateFlow()
+
+    private val _deleteTargetItem = MutableStateFlow<FileTreeItem?>(null)
+    val deleteTargetItem: StateFlow<FileTreeItem?> = _deleteTargetItem.asStateFlow()
 
     private val _isFolderCreation = MutableStateFlow(false)
     val isFolderCreation: StateFlow<Boolean> = _isFolderCreation.asStateFlow()
@@ -283,8 +292,9 @@ class MainViewModel : ViewModel() {
         _showSettings.value = show
     }
 
-    fun openCreateDialog(isFolder: Boolean) {
+    fun openCreateDialog(isFolder: Boolean, parentDir: File? = null) {
         _isFolderCreation.value = isFolder
+        _createParentDir.value = parentDir
         _newNameInput.value = ""
         _validationError.value = null
         _showCreateDialog.value = true
@@ -292,21 +302,22 @@ class MainViewModel : ViewModel() {
 
     fun closeCreateDialog() {
         _showCreateDialog.value = false
+        _createParentDir.value = null
         _newNameInput.value = ""
         _validationError.value = null
     }
 
     fun updateNewNameInput(context: Context, name: String) {
         _newNameInput.value = name
-        val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
-        _validationError.value = WorkspaceManager.validateName(workspaceDir, name)
+        val targetDir = _createParentDir.value ?: WorkspaceManager.getWorkspaceDir(context)
+        _validationError.value = WorkspaceManager.validateName(targetDir, name)
     }
 
     fun createNewItem(context: Context, webView: WebView?) {
         viewModelScope.launch {
-            val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
+            val targetDir = _createParentDir.value ?: WorkspaceManager.getWorkspaceDir(context)
             val name = _newNameInput.value
-            val err = WorkspaceManager.validateName(workspaceDir, name)
+            val err = WorkspaceManager.validateName(targetDir, name)
 
             if (err != null) {
                 _validationError.value = err
@@ -315,9 +326,9 @@ class MainViewModel : ViewModel() {
 
             val isFolder = _isFolderCreation.value
             val result = if (isFolder) {
-                WorkspaceManager.createNewFolder(workspaceDir, name)
+                WorkspaceManager.createNewFolder(targetDir, name)
             } else {
-                WorkspaceManager.createNewFile(workspaceDir, name)
+                WorkspaceManager.createNewFile(targetDir, name)
             }
 
             result.onSuccess { createdFile ->
@@ -328,6 +339,46 @@ class MainViewModel : ViewModel() {
                 }
             }.onFailure { ex ->
                 _validationError.value = ex.message ?: "Creation failed."
+            }
+        }
+    }
+
+    fun openDeleteDialog(item: FileTreeItem) {
+        _deleteTargetItem.value = item
+        _showDeleteDialog.value = true
+    }
+
+    fun closeDeleteDialog() {
+        _showDeleteDialog.value = false
+        _deleteTargetItem.value = null
+    }
+
+    fun confirmDelete(context: Context, webView: WebView?) {
+        val target = _deleteTargetItem.value ?: return
+        closeDeleteDialog()
+        deleteItem(context, target.path, webView)
+    }
+
+    fun deleteItem(context: Context, path: String, webView: WebView?) {
+        viewModelScope.launch {
+            val file = File(path)
+            val isDir = file.isDirectory
+            val success = if (isDir) file.deleteRecursively() else file.delete()
+            if (success) {
+                val matchingTab = _openTabs.value.find { it.id == path }
+                if (matchingTab != null) {
+                    closeTab(path, webView)
+                } else if (isDir) {
+                    val prefix = path + File.separator
+                    val childTabs = _openTabs.value.filter { it.id.startsWith(prefix) }
+                    for (tab in childTabs) {
+                        closeTab(tab.id, webView)
+                    }
+                }
+                refreshWorkspace(context)
+                _toastMessage.value = "${file.name} deleted"
+            } else {
+                _toastMessage.value = "Failed to delete ${file.name}"
             }
         }
     }

@@ -1,5 +1,9 @@
 package com.cresteditor.ui.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -22,6 +26,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cresteditor.ui.theme.*
+import java.io.File
 
 // =============================================================================
 // VS CODE THEME CONSTANTS (Activity Bar & Primary Side Bar)
@@ -97,11 +103,13 @@ fun CrestFileDrawer(
     projectName: String = "Crest Project",
     fileList: List<FileTreeItem> = emptyList(),
     activeTabId: String = "",
+    workspaceDir: File? = null,
     onFileSelect: (FileTreeItem) -> Unit = {},
-    onNewFileClick: () -> Unit = {},
-    onNewFolderClick: () -> Unit = {},
+    onNewFileClick: (parentDir: File?) -> Unit = {},
+    onNewFolderClick: (parentDir: File?) -> Unit = {},
     onRefreshClick: () -> Unit = {},
     onRenameClick: (FileTreeItem) -> Unit = {},
+    onDeleteClick: (FileTreeItem) -> Unit = {},
     onTerminalClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onCloseDrawer: () -> Unit = {}
@@ -111,6 +119,9 @@ fun CrestFileDrawer(
     var expandedPaths by remember { mutableStateOf(setOf<String>()) }
     var activeFolderTreePath by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
+    var contextMenuItem by remember { mutableStateOf<FileTreeItem?>(null) }
+    val context = LocalContext.current
+    val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager }
 
     // Sync active tree with active file tab if no tree was explicitly focused yet
     LaunchedEffect(activeTabId, fileList) {
@@ -258,7 +269,7 @@ fun CrestFileDrawer(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             // New File
                             IconButton(
-                                onClick = onNewFileClick,
+                                onClick = { onNewFileClick(null) },
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
@@ -271,7 +282,7 @@ fun CrestFileDrawer(
 
                             // New Folder
                             IconButton(
-                                onClick = onNewFolderClick,
+                                onClick = { onNewFolderClick(null) },
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
@@ -405,7 +416,7 @@ fun CrestFileDrawer(
                                                 }
                                             },
                                             onLongClick = {
-                                                onRenameClick(item)
+                                                contextMenuItem = item
                                             }
                                         )
                                 ) {
@@ -469,16 +480,107 @@ fun CrestFileDrawer(
 
                                         Spacer(modifier = Modifier.weight(1f))
 
-                                        // Mobile touch rename action
+                                        // Mobile touch context menu action
                                         IconButton(
-                                            onClick = { onRenameClick(item) },
+                                            onClick = { contextMenuItem = item },
                                             modifier = Modifier.size(24.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Edit,
-                                                contentDescription = "Rename",
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = "More actions",
                                                 tint = if (isActive) VSCodeTextActive.copy(alpha = 0.7f) else VSCodeActivityBarInactive.copy(alpha = 0.45f),
-                                                modifier = Modifier.size(13.dp)
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // VS Code Standard Context Menu (No icons/emojis, consistent common component)
+                                    if (contextMenuItem == item) {
+                                        VSCodeDropdownMenu(
+                                            expanded = true,
+                                            onDismissRequest = { contextMenuItem = null }
+                                        ) {
+                                            if (item.isDirectory) {
+                                                VSCodeMenuItem(
+                                                    text = "New File...",
+                                                    onClick = {
+                                                        contextMenuItem = null
+                                                        onNewFileClick(File(item.path))
+                                                    }
+                                                )
+                                                VSCodeMenuItem(
+                                                    text = "New Folder...",
+                                                    onClick = {
+                                                        contextMenuItem = null
+                                                        onNewFolderClick(File(item.path))
+                                                    }
+                                                )
+                                                VSCodeMenuSeparator()
+                                            }
+
+                                            VSCodeMenuItem(
+                                                text = "Cut",
+                                                shortcut = "Ctrl+X",
+                                                enabled = false,
+                                                onClick = { contextMenuItem = null }
+                                            )
+                                            VSCodeMenuItem(
+                                                text = "Copy",
+                                                shortcut = "Ctrl+C",
+                                                enabled = false,
+                                                onClick = { contextMenuItem = null }
+                                            )
+                                            VSCodeMenuItem(
+                                                text = "Paste",
+                                                shortcut = "Ctrl+V",
+                                                enabled = false,
+                                                onClick = { contextMenuItem = null }
+                                            )
+
+                                            VSCodeMenuSeparator()
+
+                                            VSCodeMenuItem(
+                                                text = "Copy Path",
+                                                onClick = {
+                                                    contextMenuItem = null
+                                                    clipboard?.setPrimaryClip(ClipData.newPlainText("path", item.path))
+                                                    Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                }
+                                            )
+                                            VSCodeMenuItem(
+                                                text = "Copy Relative Path",
+                                                onClick = {
+                                                    contextMenuItem = null
+                                                    val relPath = if (workspaceDir != null) {
+                                                        try {
+                                                            File(item.path).relativeTo(workspaceDir).path
+                                                        } catch (_: Exception) {
+                                                            item.name
+                                                        }
+                                                    } else item.name
+                                                    clipboard?.setPrimaryClip(ClipData.newPlainText("relative_path", relPath))
+                                                    Toast.makeText(context, "Relative path copied to clipboard", Toast.LENGTH_SHORT).show()
+                                                }
+                                            )
+
+                                            VSCodeMenuSeparator()
+
+                                            VSCodeMenuItem(
+                                                text = "Rename...",
+                                                shortcut = "F2",
+                                                onClick = {
+                                                    contextMenuItem = null
+                                                    onRenameClick(item)
+                                                }
+                                            )
+                                            VSCodeMenuItem(
+                                                text = "Delete",
+                                                shortcut = "Del",
+                                                isDestructive = true,
+                                                onClick = {
+                                                    contextMenuItem = null
+                                                    onDeleteClick(item)
+                                                }
                                             )
                                         }
                                     }

@@ -504,6 +504,8 @@ class MainActivity : ComponentActivity() {
                 val renameTargetItem by viewModel.renameTargetItem.collectAsState()
                 val renameInput by viewModel.renameInput.collectAsState()
                 val renameValidationError by viewModel.renameValidationError.collectAsState()
+                val showDeleteDialog by viewModel.showDeleteDialog.collectAsState()
+                val deleteTargetItem by viewModel.deleteTargetItem.collectAsState()
                 val toastMessage by viewModel.toastMessage.collectAsState()
 
                 val monacoBridge = remember {
@@ -675,6 +677,47 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                // Delete Confirmation Dialog
+                if (showDeleteDialog && deleteTargetItem != null) {
+                    val isDir = deleteTargetItem!!.isDirectory
+                    AlertDialog(
+                        onDismissRequest = {
+                            viewModel.closeDeleteDialog()
+                        },
+                        title = {
+                            Text(
+                                text = if (isDir) "Delete Folder" else "Delete File",
+                                color = CrestTextActive
+                            )
+                        },
+                        text = {
+                            Text(
+                                text = "Are you sure you want to delete '${deleteTargetItem!!.name}'? This cannot be undone.",
+                                color = CrestTextSecondary
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    viewModel.confirmDelete(context, webView)
+                                }
+                            ) {
+                                Text("Delete", color = androidx.compose.ui.graphics.Color(0xFFF14C4C))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    viewModel.closeDeleteDialog()
+                                }
+                            ) {
+                                Text("Cancel", color = CrestTextSecondary)
+                            }
+                        },
+                        containerColor = CrestSurfaceHeader
+                    )
+                }
+
                 ModalNavigationDrawer(
                     drawerState = drawerState,
                     gesturesEnabled = drawerState.isOpen,
@@ -687,6 +730,7 @@ class MainActivity : ComponentActivity() {
                                 projectName = workspaceDir.name,
                                 fileList = fileTreeItems,
                                 activeTabId = activeTabId,
+                                workspaceDir = workspaceDir,
                                 onFileSelect = { item ->
                                     scope.launch {
                                         drawerState.close()
@@ -695,17 +739,20 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onNewFileClick = {
-                                    viewModel.openCreateDialog(isFolder = false)
+                                onNewFileClick = { parentDir ->
+                                    viewModel.openCreateDialog(isFolder = false, parentDir = parentDir)
                                 },
-                                onNewFolderClick = {
-                                    viewModel.openCreateDialog(isFolder = true)
+                                onNewFolderClick = { parentDir ->
+                                    viewModel.openCreateDialog(isFolder = true, parentDir = parentDir)
                                 },
                                 onRefreshClick = {
                                     viewModel.refreshWorkspace(this@MainActivity)
                                 },
                                 onRenameClick = { item ->
                                     viewModel.openRenameDialog(item)
+                                },
+                                onDeleteClick = { item ->
+                                    viewModel.openDeleteDialog(item)
                                 },
                                 onTerminalClick = {
                                     scope.launch {

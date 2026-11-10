@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -72,12 +73,14 @@ fun VSCodeMenuItem(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    shortcut: String? = null,
     icon: ImageVector? = null,
     isDestructive: Boolean = false,
     isChecked: Boolean? = null,
     enabled: Boolean = true
 ) {
-    var isPressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
 
     val effectiveFg = when {
         !enabled -> Color(0xFF666666)
@@ -96,7 +99,7 @@ fun VSCodeMenuItem(
             )
             .clickable(
                 enabled = enabled,
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = null
             ) {
                 onClick()
@@ -133,7 +136,7 @@ fun VSCodeMenuItem(
             Spacer(modifier = Modifier.width(8.dp))
         }
 
-        // Action Label (Compact, No desktop shortcuts)
+        // Action Label
         Text(
             text = text,
             color = if (isPressed && enabled) Color.White else effectiveFg,
@@ -143,6 +146,17 @@ fun VSCodeMenuItem(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
+
+        // Optional Shortcut text (e.g. F2, Del, Ctrl+X)
+        if (shortcut != null) {
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = shortcut,
+                color = if (enabled) Color(0xFF858585) else Color(0xFF555555),
+                fontSize = 11.5.sp,
+                maxLines = 1
+            )
+        }
     }
 }
 
