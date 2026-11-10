@@ -13,8 +13,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -23,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -668,40 +667,17 @@ class MainActivity : ComponentActivity() {
                     val navBarBottomDp = with(density) { WindowInsets.navigationBars.getBottom(density).toDp() }
                     val isKeyboardOpen = imeBottomDp > 0.dp
 
-                    val bottomBarHeight = 97.dp // 73dp ExtraKeysToolbar + 24dp CrestStatusBar
-                    val bottomControlsOcclusion = if (isKeyboardOpen) imeBottomDp + bottomBarHeight else navBarBottomDp + bottomBarHeight
+                    var measuredBottomBarHeight by remember { mutableStateOf(97.dp) }
+                    val bottomBarBottomPadding = if (isKeyboardOpen) imeBottomDp else navBarBottomDp
+                    val bottomControlsOcclusion = bottomBarBottomPadding + measuredBottomBarHeight
 
-                    val targetTerminalBottom = when {
-                        !showTerminal -> 0.dp
-                        !isKeyboardOpen -> navBarBottomDp + bottomBarHeight
-                        activeFocus == ActiveFocus.TERMINAL -> bottomControlsOcclusion
-                        else -> 0.dp // Monaco focused while keyboard is open: terminal stays at bottom behind keyboard
+                    // Option A: Terminal ALWAYS sits directly on top of the bottom bar (ExtraKeysToolbar + CrestStatusBar)
+                    val terminalBottomPadding = if (showTerminal) bottomControlsOcclusion else 0.dp
+                    val monacoBottomPadding = if (showTerminal) {
+                        bottomControlsOcclusion + terminalPanelHeight
+                    } else {
+                        bottomControlsOcclusion
                     }
-
-                    val targetMonacoBottom = when {
-                        !showTerminal -> bottomControlsOcclusion
-                        !isKeyboardOpen -> navBarBottomDp + bottomBarHeight + terminalPanelHeight
-                        activeFocus == ActiveFocus.TERMINAL -> bottomControlsOcclusion + terminalPanelHeight
-                        else -> maxOf(bottomControlsOcclusion, terminalPanelHeight) // Terminal sits at bottom; visible only if taller than keyboard
-                    }
-
-                    val animatedTerminalBottom by animateDpAsState(
-                        targetValue = targetTerminalBottom,
-                        animationSpec = tween(durationMillis = 200),
-                        label = "animatedTerminalBottom"
-                    )
-
-                    val animatedMonacoBottom by animateDpAsState(
-                        targetValue = targetMonacoBottom,
-                        animationSpec = tween(durationMillis = 200),
-                        label = "animatedMonacoBottom"
-                    )
-
-                    val bottomBarBottomPadding by animateDpAsState(
-                        targetValue = if (isKeyboardOpen) imeBottomDp else navBarBottomDp,
-                        animationSpec = tween(durationMillis = 200),
-                        label = "bottomBarBottomPadding"
-                    )
 
                     Column(
                         modifier = Modifier
@@ -774,7 +750,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .padding(bottom = animatedMonacoBottom)
+                                        .padding(bottom = monacoBottomPadding)
                                 )
 
                                 // Layer 1: Terminal Screen
@@ -794,7 +770,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         modifier = Modifier
                                             .align(Alignment.BottomCenter)
-                                            .padding(bottom = animatedTerminalBottom)
+                                            .padding(bottom = terminalBottomPadding)
                                     )
                                 } else if (showSettings) {
                                     SettingsScreen(
@@ -810,7 +786,7 @@ class MainActivity : ComponentActivity() {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .padding(bottom = animatedMonacoBottom)
+                                            .padding(bottom = monacoBottomPadding)
                                             .background(CrestBackground),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -844,6 +820,9 @@ class MainActivity : ComponentActivity() {
                                         .fillMaxWidth()
                                         .align(Alignment.BottomCenter)
                                         .padding(bottom = bottomBarBottomPadding)
+                                        .onGloballyPositioned { coordinates ->
+                                            measuredBottomBarHeight = with(density) { coordinates.size.height.toDp() }
+                                        }
                                 ) {
                                     TermuxExtraKeysToolbar(
                                         isCtrlActive = isCtrlActive,
