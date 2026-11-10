@@ -35,13 +35,17 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
 import com.cresteditor.ui.theme.*
 import com.cresteditor.workspace.WorkspaceManager
 import java.io.File
@@ -107,14 +111,15 @@ data class FileTreeItem(
  *    - Active open file highlighted in VS Code blue selection background
  *    - In-place Search view & Source Control view
  */
-data class InlineCreationState(
-    val isFolder: Boolean,
-    val parentPath: String? = null
-)
+sealed interface InlineOpState {
+    data class Create(val isFolder: Boolean, val parentPath: String? = null) : InlineOpState
+    data class Rename(val item: FileTreeItem) : InlineOpState
+}
 
 sealed interface ExplorerRowItem {
     data class Existing(val item: FileTreeItem) : ExplorerRowItem
-    data class InlineInput(val isFolder: Boolean, val level: Int, val parentPath: String?) : ExplorerRowItem
+    data class InlineCreate(val isFolder: Boolean, val level: Int, val parentPath: String?) : ExplorerRowItem
+    data class InlineRename(val item: FileTreeItem) : ExplorerRowItem
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -126,8 +131,8 @@ fun CrestFileDrawer(
     workspaceDir: File? = null,
     onFileSelect: (FileTreeItem) -> Unit = {},
     onCreateItem: (parentDir: File?, name: String, isFolder: Boolean) -> Unit = { _, _, _ -> },
+    onRenameItem: (item: FileTreeItem, newName: String) -> Unit = { _, _ -> },
     onRefreshClick: () -> Unit = {},
-    onRenameClick: (FileTreeItem) -> Unit = {},
     onDeleteClick: (FileTreeItem) -> Unit = {},
     onTerminalClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
@@ -140,7 +145,7 @@ fun CrestFileDrawer(
     var searchQuery by remember { mutableStateOf("") }
     var contextMenuItem by remember { mutableStateOf<FileTreeItem?>(null) }
     var showEmptyAreaMenu by remember { mutableStateOf(false) }
-    var inlineCreationState by remember { mutableStateOf<InlineCreationState?>(null) }
+    var inlineOpState by remember { mutableStateOf<InlineOpState?>(null) }
     val density = LocalDensity.current
     var touchOffset by remember { mutableStateOf(DpOffset.Zero) }
     var emptyAreaOffset by remember { mutableStateOf(DpOffset.Zero) }
@@ -152,7 +157,11 @@ fun CrestFileDrawer(
             expandedPaths = expandedPaths + parentPath
             activeFolderTreePath = parentPath
         }
-        inlineCreationState = InlineCreationState(isFolder, parentPath)
+        inlineOpState = InlineOpState.Create(isFolder, parentPath)
+    }
+
+    fun startInlineRename(item: FileTreeItem) {
+        inlineOpState = InlineOpState.Rename(item)
     }
 
     // Sync active tree with active file tab if no tree was explicitly focused yet
@@ -394,30 +403,72 @@ fun CrestFileDrawer(
                             }
                         }
 
-                        val explorerRowItems = remember(visibleFiles, inlineCreationState) {
+                        val explorerRowItems = remember(visibleFiles, inlineOpState) {
                             val result = mutableListOf<ExplorerRowItem>()
-                            val creation = inlineCreationState
-                            if (creation == null) {
+                            val op = inlineOpState
+                            if (op == null) {
                                 visibleFiles.mapTo(result) { ExplorerRowItem.Existing(it) }
                             } else {
-                                if (creation.parentPath == null) {
-                                    result.add(ExplorerRowItem.InlineInput(isFolder = creation.isFolder, level = 0, parentPath = null))
-                                    visibleFiles.mapTo(result) { ExplorerRowItem.Existing(it) }
-                                } else {
-                                    val parentIdx = visibleFiles.indexOfFirst { it.path == creation.parentPath }
-                                    if (parentIdx != -1) {
-                                        val parentItem = visibleFiles[parentIdx]
-                                        val childLevel = parentItem.level + 1
-                                        for (i in 0..parentIdx) {
+                                when (op) {
+                                    is InlineOpState.Rename -> {
+                                        for (item in visibleFiles) {
+                                            if (item.path == op.item.path) {
+                                                result.add(ExplorerRowItem.InlineRename(op.item))
+                                            } else {
+                                                result.add(ExplorerRowItem.Existing(item))
+                                            }
+                                        }
+                                    }
+                                    is InlineOpState.Create -> {
+                                        val insertIndex: Int
+                                        val childLevel: Int
+                                        if (op.parentPath == null) {
+                                            childLevel = 0
+                                            if (op.isFolder) {
+                                                insertIndex = 0
+                                            } else {
+                                                val firstRootFileIdx = visibleFiles.indexOfFirst { it.level == 0 && !it.isDirectory }
+                                                insertIndex = if (firstRootFileIdx != -1) firstRootFileIdx else visibleFiles.size
+                                            }
+                                        } else {
+                                            val parentIdx = visibleFiles.indexOfFirst { it.path == op.parentPath }
+                                            if (parentIdx != -1) {
+                                                val parentItem = visibleFiles[parentIdx]
+                                                childLevel = parentItem.level + 1
+                                                val parentPrefix = "${op.parentPath}${java.io.File.separator}"
+                                                if (op.isFolder) {
+                                                    insertIndex = parentIdx + 1
+                                                } else {
+                                                    val firstChildFileIdx = visibleFiles.indexOfFirst {
+                                                        it.level == childLevel && !it.isDirectory && it.path.startsWith(parentPrefix)
+                                                    }
+                                                    if (firstChildFileIdx != -1) {
+                                                        insertIndex = firstChildFileIdx
+                                                    } else {
+                                                        var lastDescendant = parentIdx
+                                                        for (i in (parentIdx + 1) until visibleFiles.size) {
+                                                            if (visibleFiles[i].path.startsWith(parentPrefix)) {
+                                                                lastDescendant = i
+                                                            } else {
+                                                                break
+                                                            }
+                                                        }
+                                                        insertIndex = lastDescendant + 1
+                                                    }
+                                                }
+                                            } else {
+                                                childLevel = 0
+                                                insertIndex = 0
+                                            }
+                                        }
+                                        val clampedIdx = insertIndex.coerceIn(0, visibleFiles.size)
+                                        for (i in 0 until clampedIdx) {
                                             result.add(ExplorerRowItem.Existing(visibleFiles[i]))
                                         }
-                                        result.add(ExplorerRowItem.InlineInput(isFolder = creation.isFolder, level = childLevel, parentPath = creation.parentPath))
-                                        for (i in (parentIdx + 1) until visibleFiles.size) {
+                                        result.add(ExplorerRowItem.InlineCreate(isFolder = op.isFolder, level = childLevel, parentPath = op.parentPath))
+                                        for (i in clampedIdx until visibleFiles.size) {
                                             result.add(ExplorerRowItem.Existing(visibleFiles[i]))
                                         }
-                                    } else {
-                                        result.add(ExplorerRowItem.InlineInput(isFolder = creation.isFolder, level = 0, parentPath = null))
-                                        visibleFiles.mapTo(result) { ExplorerRowItem.Existing(it) }
                                     }
                                 }
                             }
@@ -432,23 +483,42 @@ fun CrestFileDrawer(
                             items(explorerRowItems, key = { row ->
                                 when (row) {
                                     is ExplorerRowItem.Existing -> row.item.path
-                                    is ExplorerRowItem.InlineInput -> "__inline_creation__"
+                                    is ExplorerRowItem.InlineCreate -> "__inline_create__"
+                                    is ExplorerRowItem.InlineRename -> "__inline_rename_${row.item.path}__"
                                 }
                             }) { row ->
                                 when (row) {
-                                    is ExplorerRowItem.InlineInput -> {
-                                        InlineCreationTreeRow(
+                                    is ExplorerRowItem.InlineCreate -> {
+                                        val targetDir = if (row.parentPath != null) File(row.parentPath) else workspaceDir
+                                        InlineTreeInputRow(
+                                            initialText = "",
                                             isFolder = row.isFolder,
                                             level = row.level,
-                                            parentPath = row.parentPath,
-                                            workspaceDir = workspaceDir,
+                                            targetDir = targetDir,
+                                            isRename = false,
                                             onCommit = { name ->
-                                                val targetDir = if (row.parentPath != null) File(row.parentPath) else workspaceDir
                                                 onCreateItem(targetDir, name, row.isFolder)
-                                                inlineCreationState = null
+                                                inlineOpState = null
                                             },
                                             onCancel = {
-                                                inlineCreationState = null
+                                                inlineOpState = null
+                                            }
+                                        )
+                                    }
+                                    is ExplorerRowItem.InlineRename -> {
+                                        val targetDir = File(row.item.path).parentFile
+                                        InlineTreeInputRow(
+                                            initialText = row.item.name,
+                                            isFolder = row.item.isDirectory,
+                                            level = row.item.level,
+                                            targetDir = targetDir,
+                                            isRename = true,
+                                            onCommit = { newName ->
+                                                onRenameItem(row.item, newName)
+                                                inlineOpState = null
+                                            },
+                                            onCancel = {
+                                                inlineOpState = null
                                             }
                                         )
                                     }
@@ -476,9 +546,13 @@ fun CrestFileDrawer(
                                                 .fillMaxWidth()
                                                 .height(32.dp)
                                                 .background(if (isActive) VSCodeListSelectionBg else Color.Transparent)
-                                                .pointerInput(item.path) {
+                                                .pointerInput(item.path, inlineOpState) {
                                                     detectTapGestures(
                                                         onTap = {
+                                                            if (inlineOpState != null) {
+                                                                inlineOpState = null
+                                                                return@detectTapGestures
+                                                            }
                                                             if (isFolder) {
                                                                 if (isExpanded) {
                                                                     // Collapsing folder: remove from expandedPaths
@@ -503,6 +577,9 @@ fun CrestFileDrawer(
                                                             }
                                                         },
                                                         onLongPress = { offset ->
+                                                            if (inlineOpState != null) {
+                                                                inlineOpState = null
+                                                            }
                                                             touchOffset = DpOffset(
                                                                 x = with(density) { offset.x.toDp() },
                                                                 y = with(density) { offset.y.toDp() }
@@ -669,7 +746,7 @@ fun CrestFileDrawer(
                                                         shortcut = "F2",
                                                         onClick = {
                                                             contextMenuItem = null
-                                                            onRenameClick(item)
+                                                            startInlineRename(item)
                                                         }
                                                     )
                                                     VSCodeMenuItem(
@@ -694,9 +771,17 @@ fun CrestFileDrawer(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 400.dp)
-                                        .pointerInput(Unit) {
+                                        .pointerInput(inlineOpState) {
                                             detectTapGestures(
+                                                onTap = {
+                                                    if (inlineOpState != null) {
+                                                        inlineOpState = null
+                                                    }
+                                                },
                                                 onLongPress = { offset ->
+                                                    if (inlineOpState != null) {
+                                                        inlineOpState = null
+                                                    }
                                                     emptyAreaOffset = DpOffset(
                                                         x = with(density) { offset.x.toDp() },
                                                         y = with(density) { offset.y.toDp() }
@@ -994,44 +1079,60 @@ internal fun getFileIcon(filename: String): Pair<ImageVector, Color> {
 }
 
 /**
- * Exact VS Code In-Place Tree Row for File / Folder Creation.
+ * Exact VS Code In-Place Tree Row for File / Folder Creation and Rename.
  * Features:
- * - Dynamic Seti file icon based on real-time typed extension
+ * - Dynamic Seti file icon based on real-time typed extension (Chevron arrow for folders)
  * - 1px #007ACC focus border (#BE1100 on validation error)
  * - Auto-focus with software keyboard (IME Done = Commit)
- * - VS Code Floating Error Tooltip (#5A1D1D) on validation error
- * - Fast touch Checkmark / Close actions
+ * - Pre-selected name excluding extension on rename
+ * - VS Code Floating Error Tooltip (#5A1D1D) hovering over items below
+ * - Clean UI with NO touch checkmark / cancel buttons
  */
 @Composable
-private fun InlineCreationTreeRow(
+private fun InlineTreeInputRow(
+    initialText: String = "",
     isFolder: Boolean,
     level: Int,
-    parentPath: String?,
-    workspaceDir: File?,
+    targetDir: File?,
+    isRename: Boolean = false,
     onCommit: (String) -> Unit,
     onCancel: () -> Unit
 ) {
-    var inputText by remember { mutableStateOf("") }
+    val initialSelection = remember(initialText, isFolder) {
+        if (initialText.isEmpty()) {
+            TextRange(0, 0)
+        } else if (isFolder) {
+            TextRange(0, initialText.length)
+        } else {
+            val dotIndex = initialText.lastIndexOf('.')
+            if (dotIndex > 0) {
+                TextRange(0, dotIndex)
+            } else {
+                TextRange(0, initialText.length)
+            }
+        }
+    }
+
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(text = initialText, selection = initialSelection))
+    }
     var validationError by remember { mutableStateOf<String?>(null) }
     val focusRequester = remember { FocusRequester() }
-
-    val targetDir = remember(parentPath, workspaceDir) {
-        if (parentPath != null) File(parentPath) else workspaceDir
-    }
+    val density = LocalDensity.current
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
+            .height(30.dp)
             .padding(vertical = 1.dp)
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(30.dp)
+                .fillMaxSize()
                 .padding(start = (level * 14 + 8).dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1041,13 +1142,13 @@ private fun InlineCreationTreeRow(
             ) {
                 if (isFolder) {
                     Icon(
-                        imageVector = Icons.Default.Folder,
+                        imageVector = Icons.Default.KeyboardArrowRight,
                         contentDescription = null,
-                        tint = ColorFolder,
+                        tint = VSCodeActivityBarInactive,
                         modifier = Modifier.size(17.dp)
                     )
                 } else {
-                    val iconData = getFileIcon(inputText)
+                    val iconData = getFileIcon(textFieldValue.text)
                     Icon(
                         imageVector = iconData.first,
                         contentDescription = null,
@@ -1070,11 +1171,16 @@ private fun InlineCreationTreeRow(
                 contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
-                    value = inputText,
-                    onValueChange = { newText ->
-                        inputText = newText
-                        validationError = if (targetDir != null && newText.isNotEmpty()) {
-                            WorkspaceManager.validateName(targetDir, newText)
+                    value = textFieldValue,
+                    onValueChange = { newValue ->
+                        textFieldValue = newValue
+                        val trimmed = newValue.text.trim()
+                        validationError = if (trimmed.isNotEmpty() && targetDir != null) {
+                            if (isRename && trimmed == initialText) {
+                                null
+                            } else {
+                                WorkspaceManager.validateName(targetDir, trimmed)
+                            }
                         } else null
                     },
                     modifier = Modifier
@@ -1092,11 +1198,12 @@ private fun InlineCreationTreeRow(
                     ),
                     keyboardActions = KeyboardActions(
                         onDone = {
-                            val trimmed = inputText.trim()
-                            if (trimmed.isEmpty()) {
+                            val trimmed = textFieldValue.text.trim()
+                            if (trimmed.isEmpty() || (isRename && trimmed == initialText)) {
                                 onCancel()
                             } else {
-                                val err = targetDir?.let { WorkspaceManager.validateName(it, trimmed) }
+                                val err = if (isRename && trimmed == initialText) null
+                                else targetDir?.let { WorkspaceManager.validateName(it, trimmed) }
                                 if (err != null) {
                                     validationError = err
                                 } else {
@@ -1107,60 +1214,32 @@ private fun InlineCreationTreeRow(
                     )
                 )
             }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            IconButton(
-                onClick = {
-                    val trimmed = inputText.trim()
-                    if (trimmed.isEmpty()) {
-                        onCancel()
-                    } else {
-                        val err = targetDir?.let { WorkspaceManager.validateName(it, trimmed) }
-                        if (err != null) {
-                            validationError = err
-                        } else {
-                            onCommit(trimmed)
-                        }
-                    }
-                },
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Create",
-                    tint = Color(0xFF007ACC),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
-            IconButton(
-                onClick = onCancel,
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Cancel",
-                    tint = Color(0xFF858585),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
         }
 
+        // Floating VS Code Validation Error Tooltip (Hovers over rows below without pushing them)
         if (validationError != null) {
-            Box(
-                modifier = Modifier
-                    .padding(start = (level * 14 + 32).dp, end = 12.dp, top = 2.dp)
-                    .background(Color(0xFF5A1D1D), RoundedCornerShape(2.dp))
-                    .border(1.dp, Color(0xFFBE1100), RoundedCornerShape(2.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(
+                    x = with(density) { (level * 14 + 32).dp.roundToPx() },
+                    y = with(density) { 30.dp.roundToPx() }
+                ),
+                onDismissRequest = {}
             ) {
-                Text(
-                    text = validationError!!,
-                    color = Color(0xFFCCCCCC),
-                    fontSize = 11.5.sp,
-                    lineHeight = 14.sp
-                )
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 240.dp)
+                        .background(Color(0xFF5A1D1D), RoundedCornerShape(2.dp))
+                        .border(1.dp, Color(0xFFBE1100), RoundedCornerShape(2.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = validationError!!,
+                        color = Color(0xFFCCCCCC),
+                        fontSize = 11.5.sp,
+                        lineHeight = 14.sp
+                    )
+                }
             }
         }
     }

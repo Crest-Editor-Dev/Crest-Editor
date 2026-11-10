@@ -500,10 +500,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                val showRenameDialog by viewModel.showRenameDialog.collectAsState()
-                val renameTargetItem by viewModel.renameTargetItem.collectAsState()
-                val renameInput by viewModel.renameInput.collectAsState()
-                val renameValidationError by viewModel.renameValidationError.collectAsState()
                 val showDeleteDialog by viewModel.showDeleteDialog.collectAsState()
                 val deleteTargetItem by viewModel.deleteTargetItem.collectAsState()
                 val toastMessage by viewModel.toastMessage.collectAsState()
@@ -556,66 +552,6 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         viewModel.clearToastMessage()
                     }
-                }
-
-                // Rename Dialog
-                if (showRenameDialog && renameTargetItem != null) {
-                    val isDir = renameTargetItem!!.isDirectory
-                    AlertDialog(
-                        onDismissRequest = {
-                            viewModel.closeRenameDialog()
-                        },
-                        title = {
-                            Text(
-                                text = if (isDir) "Rename Folder" else "Rename File",
-                                color = CrestTextActive
-                            )
-                        },
-                        text = {
-                            Column {
-                                OutlinedTextField(
-                                    value = renameInput,
-                                    onValueChange = { valStr ->
-                                        viewModel.updateRenameInput(valStr)
-                                    },
-                                    label = { Text(if (isDir) "Folder Name" else "File Name") },
-                                    singleLine = true,
-                                    isError = renameValidationError != null,
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = CrestAccentPrimary,
-                                        focusedLabelColor = CrestAccentPrimary
-                                    )
-                                )
-                                if (renameValidationError != null) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = renameValidationError!!,
-                                        color = CrestAccentRed,
-                                        fontSize = 12.sp
-                                    )
-                                }
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    viewModel.executeRename(context, webView)
-                                }
-                            ) {
-                                Text("Rename", color = CrestAccentPrimary)
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = {
-                                    viewModel.closeRenameDialog()
-                                }
-                            ) {
-                                Text("Cancel", color = CrestTextSecondary)
-                            }
-                        },
-                        containerColor = CrestSurfaceHeader
-                    )
                 }
 
                 // Delete Confirmation Dialog
@@ -683,11 +619,11 @@ class MainActivity : ComponentActivity() {
                                 onCreateItem = { parentDir, name, isFolder ->
                                     viewModel.createNewItemDirect(parentDir, name, isFolder, webView, this@MainActivity)
                                 },
+                                onRenameItem = { item, newName ->
+                                    viewModel.renameItemDirect(item, newName, webView, this@MainActivity)
+                                },
                                 onRefreshClick = {
                                     viewModel.refreshWorkspace(this@MainActivity)
-                                },
-                                onRenameClick = { item ->
-                                    viewModel.openRenameDialog(item)
                                 },
                                 onDeleteClick = { item ->
                                     viewModel.openDeleteDialog(item)

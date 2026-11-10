@@ -513,4 +513,78 @@ class MainViewModel : ViewModel() {
             }
         }
     }
+
+    fun renameItemDirect(target: FileTreeItem, newName: String, webView: WebView?, context: Context) {
+        val trimmed = newName.trim()
+        val oldFile = File(target.path)
+        val parent = oldFile.parentFile ?: return
+
+        if (trimmed == target.name) return
+
+        val err = WorkspaceManager.validateName(parent, trimmed)
+        if (err != null) {
+            _toastMessage.value = err
+            return
+        }
+
+        viewModelScope.launch {
+            val result = WorkspaceManager.renameFile(oldFile, trimmed)
+            result.onSuccess { newFile ->
+                val oldPath = oldFile.absolutePath
+                val newPath = newFile.absolutePath
+                val newLanguage = WorkspaceManager.detectLanguage(newFile.name)
+
+                // Update caches if tracked
+                if (lastSavedContentHashes.containsKey(oldPath)) {
+                    val hash = lastSavedContentHashes.remove(oldPath)
+                    if (hash != null) lastSavedContentHashes[newPath] = hash
+                }
+                if (lastSavedTimestamps.containsKey(oldPath)) {
+                    lastSavedTimestamps.remove(oldPath)
+                    lastSavedTimestamps[newPath] = newFile.lastModified()
+                }
+
+                if (oldFile.isDirectory) {
+                    val oldPrefix = oldFile.absolutePath + File.separator
+                    val newPrefix = newFile.absolutePath + File.separator
+                    _openTabs.value = _openTabs.value.map { tab ->
+                        if (tab.id.startsWith(oldPrefix)) {
+                            val rel = tab.id.removePrefix(oldPrefix)
+                            val newChildPath = newPrefix + rel
+                            val childLang = WorkspaceManager.detectLanguage(tab.title)
+                            MonacoBridge.renameModel(webView, tab.id, newChildPath, childLang)
+                            tab.copy(id = newChildPath)
+                        } else {
+                            tab
+                        }
+                    }
+                    if (_activeTabId.value.startsWith(oldPrefix)) {
+                        _activeTabId.value = newPrefix + _activeTabId.value.removePrefix(oldPrefix)
+                    }
+                } else {
+                    // Update open tabs
+                    _openTabs.value = _openTabs.value.map { tab ->
+                        if (tab.id == oldPath) {
+                            tab.copy(id = newPath, title = newFile.name, isOrphaned = false)
+                        } else {
+                            tab
+                        }
+                    }
+
+                    // Update active tab if it was the renamed file
+                    if (_activeTabId.value == oldPath) {
+                        _activeTabId.value = newPath
+                        _activeLanguage.value = newLanguage
+                    }
+
+                    // Update Monaco Editor Model URI & Content
+                    MonacoBridge.renameModel(webView, oldPath, newPath, newLanguage)
+                }
+
+                refreshWorkspace(context)
+            }.onFailure { ex ->
+                _toastMessage.value = ex.message ?: "Rename failed."
+            }
+        }
+    }
 }
