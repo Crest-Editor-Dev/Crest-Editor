@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
+import com.cresteditor.icons.Codicons
 import com.cresteditor.ui.theme.*
 import com.cresteditor.workspace.WorkspaceManager
 import java.io.File
@@ -199,7 +200,7 @@ fun CrestFileDrawer(
 
             // Explorer Item
             ActivityBarItem(
-                icon = Icons.Default.FolderCopy,
+                icon = Codicons.Files,
                 contentDescription = "Explorer",
                 isSelected = activeView == SideBarView.EXPLORER,
                 onClick = { activeView = SideBarView.EXPLORER }
@@ -207,7 +208,7 @@ fun CrestFileDrawer(
 
             // Search Item
             ActivityBarItem(
-                icon = Icons.Default.Search,
+                icon = Codicons.Search,
                 contentDescription = "Search",
                 isSelected = activeView == SideBarView.SEARCH,
                 onClick = { activeView = SideBarView.SEARCH }
@@ -215,7 +216,7 @@ fun CrestFileDrawer(
 
             // Source Control (Git) Item
             ActivityBarItem(
-                icon = Icons.Default.AccountTree,
+                icon = Codicons.SourceControl,
                 contentDescription = "Source Control",
                 isSelected = activeView == SideBarView.SOURCE_CONTROL,
                 onClick = { activeView = SideBarView.SOURCE_CONTROL }
@@ -223,7 +224,7 @@ fun CrestFileDrawer(
 
             // Terminal Launcher
             ActivityBarItem(
-                icon = Icons.Default.Terminal,
+                icon = Codicons.Terminal,
                 contentDescription = "Terminal",
                 isSelected = false,
                 onClick = onTerminalClick
@@ -233,7 +234,7 @@ fun CrestFileDrawer(
 
             // Settings (Gear) at bottom
             ActivityBarItem(
-                icon = Icons.Default.Settings,
+                icon = Codicons.SettingsGear,
                 contentDescription = "Settings",
                 isSelected = false,
                 onClick = onSettingsClick
@@ -290,7 +291,7 @@ fun CrestFileDrawer(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = if (isProjectCollapsed) Icons.Default.KeyboardArrowRight else Icons.Default.KeyboardArrowDown,
+                                imageVector = if (isProjectCollapsed) Codicons.ChevronRight else Codicons.ChevronDown,
                                 contentDescription = null,
                                 tint = VSCodeSectionHeaderFg,
                                 modifier = Modifier.size(17.dp)
@@ -314,7 +315,7 @@ fun CrestFileDrawer(
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Add,
+                                    imageVector = Codicons.NewFile,
                                     contentDescription = "New File",
                                     tint = VSCodeTextPrimary,
                                     modifier = Modifier.size(19.dp)
@@ -327,7 +328,7 @@ fun CrestFileDrawer(
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.CreateNewFolder,
+                                    imageVector = Codicons.NewFolder,
                                     contentDescription = "New Folder",
                                     tint = VSCodeTextPrimary,
                                     modifier = Modifier.size(19.dp)
@@ -340,7 +341,7 @@ fun CrestFileDrawer(
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Refresh,
+                                    imageVector = Codicons.Refresh,
                                     contentDescription = "Refresh Explorer",
                                     tint = VSCodeTextPrimary,
                                     modifier = Modifier.size(18.dp)
@@ -356,7 +357,7 @@ fun CrestFileDrawer(
                                 modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.UnfoldLess,
+                                    imageVector = Codicons.CollapseAll,
                                     contentDescription = "Collapse Folders",
                                     tint = VSCodeTextPrimary,
                                     modifier = Modifier.size(19.dp)
@@ -618,7 +619,7 @@ fun CrestFileDrawer(
                                                 ) {
                                                     if (isFolder) {
                                                         Icon(
-                                                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                                                            imageVector = if (isExpanded) Codicons.ChevronDown else Codicons.ChevronRight,
                                                             contentDescription = null,
                                                             tint = VSCodeActivityBarInactive,
                                                             modifier = Modifier.size(17.dp)
@@ -1142,7 +1143,7 @@ private fun InlineTreeInputRow(
             ) {
                 if (isFolder) {
                     Icon(
-                        imageVector = Icons.Default.KeyboardArrowRight,
+                        imageVector = Codicons.ChevronRight,
                         contentDescription = null,
                         tint = VSCodeActivityBarInactive,
                         modifier = Modifier.size(17.dp)
