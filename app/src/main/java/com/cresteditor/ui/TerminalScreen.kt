@@ -69,8 +69,6 @@ fun TerminalScreen(
     onClose: () -> Unit,
     initialPath: String? = null,
     totalContainerHeight: Dp = 600.dp,
-    onTerminalFocus: () -> Unit = {},
-    onPanelHeightChanged: (Dp) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -98,10 +96,6 @@ fun TerminalScreen(
         (totalContainerHeight * panelHeightFraction).coerceIn(minHeight, totalContainerHeight)
     }
 
-    LaunchedEffect(currentPanelHeight) {
-        onPanelHeightChanged(currentPanelHeight)
-    }
-
     fun postStatus(status: String) {
         mainHandler.post {
             statusText = status
@@ -121,7 +115,6 @@ fun TerminalScreen(
     }
 
     fun showKeyboard() {
-        onTerminalFocus()
         terminalViewRef?.let { view ->
             view.requestFocus()
             val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
@@ -169,11 +162,6 @@ fun TerminalScreen(
             .fillMaxWidth()
             .height(currentPanelHeight)
             .background(Color(0xFF0F172A))
-            .pointerInput(Unit) {
-                detectTapGestures {
-                    onTerminalFocus()
-                }
-            }
     ) {
         // =====================================================================
         // 1. VS Code Draggable Splitter Handle (Overlays top border)
@@ -393,20 +381,6 @@ fun TerminalScreen(
                         setTextSize(36)
                         isFocusable = true
                         isFocusableInTouchMode = true
-                        setOnTouchListener { v, event ->
-                            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                                onTerminalFocus()
-                                if (!v.hasFocus()) {
-                                    v.requestFocus()
-                                }
-                            }
-                            false
-                        }
-                        setOnFocusChangeListener { _, hasFocus ->
-                            if (hasFocus) {
-                                onTerminalFocus()
-                            }
-                        }
                     }
                     terminalViewRef = view
 
