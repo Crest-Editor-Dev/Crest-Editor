@@ -69,6 +69,8 @@ fun TerminalScreen(
     onClose: () -> Unit,
     initialPath: String? = null,
     totalContainerHeight: Dp = 600.dp,
+    isCollapsed: Boolean = false,
+    onExpand: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -90,7 +92,9 @@ fun TerminalScreen(
     val density = LocalDensity.current
     val totalHeightPx = with(density) { totalContainerHeight.toPx() }
 
-    val currentPanelHeight = if (isMaximized) {
+    val currentPanelHeight = if (isCollapsed) {
+        40.dp
+    } else if (isMaximized) {
         totalContainerHeight
     } else {
         (totalContainerHeight * panelHeightFraction).coerceIn(minHeight, totalContainerHeight)
@@ -115,6 +119,7 @@ fun TerminalScreen(
     }
 
     fun showKeyboard() {
+        onExpand()
         terminalViewRef?.let { view ->
             view.requestFocus()
             val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
@@ -216,7 +221,12 @@ fun TerminalScreen(
                 .height(30.dp)
                 .background(Color(0xFF1E1E1E))
                 .border(width = 1.dp, color = Color(0xFF2B2B2B))
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 8.dp)
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        onExpand()
+                    }
+                },
             verticalAlignment = Alignment.CenterVertically
         ) {
             // TERMINAL Active Tab
@@ -381,6 +391,12 @@ fun TerminalScreen(
                         setTextSize(36)
                         isFocusable = true
                         isFocusableInTouchMode = true
+                        setOnTouchListener { _, event ->
+                            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                                onExpand()
+                            }
+                            false
+                        }
                     }
                     terminalViewRef = view
 
