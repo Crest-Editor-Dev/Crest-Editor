@@ -487,7 +487,6 @@ class MainActivity : ComponentActivity() {
                 var isCtrlLocked by remember { mutableStateOf(false) }
                 var isAltActive by remember { mutableStateOf(false) }
                 var isAltLocked by remember { mutableStateOf(false) }
-                var isTerminalFocused by remember { mutableStateOf(false) }
 
                 DisposableEffect(Unit) {
                     TerminalSessionManager.onModifiersChanged = { ctrl, alt ->
@@ -613,7 +612,6 @@ class MainActivity : ComponentActivity() {
                                     scope.launch {
                                         drawerState.close()
                                         if (!item.isDirectory) {
-                                            isTerminalFocused = false
                                             viewModel.openFile(File(item.path), webView)
                                         }
                                     }
@@ -634,7 +632,6 @@ class MainActivity : ComponentActivity() {
                                     scope.launch {
                                         drawerState.close()
                                         viewModel.setShowTerminal(true)
-                                        isTerminalFocused = true
                                     }
                                 },
                                 onSettingsClick = {
@@ -680,7 +677,6 @@ class MainActivity : ComponentActivity() {
                                     tabs = openTabs,
                                     activeTabId = activeTabId,
                                     onTabSelect = { tabId ->
-                                        isTerminalFocused = false
                                         viewModel.openFile(File(tabId), webView)
                                     },
                                     onTabClose = { tabId ->
@@ -690,9 +686,6 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         bottomBar = {
-                            val isKeyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-                            val isTerminalActive = showTerminal && (isTerminalFocused || !isKeyboardOpen)
-
                             Column {
                                 TermuxExtraKeysToolbar(
                                     isCtrlActive = isCtrlActive,
@@ -735,7 +728,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onToggleKeyboard = {
                                         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                        if (isTerminalActive) {
+                                        if (showTerminal) {
                                             TerminalSessionManager.activeClient?.terminalView?.let { view ->
                                                 view.requestFocus()
                                                 imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
@@ -748,7 +741,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onKeyClick = { key ->
-                                        if (isTerminalActive) {
+                                        if (showTerminal) {
                                             TerminalSessionManager.activeSession?.write(key)
                                         } else {
                                             when (key) {
@@ -789,8 +782,6 @@ class MainActivity : ComponentActivity() {
                         ) {
                             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                                 val totalContainerHeight = maxHeight
-                                val isKeyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-                                val isCollapsed = showTerminal && isKeyboardOpen && !isTerminalFocused
 
                                 CrestEditorScreen(
                                     onWebViewCreated = { wv ->
@@ -800,24 +791,16 @@ class MainActivity : ComponentActivity() {
                                             viewModel.openFile(File(activeTabId), wv)
                                         }
                                     },
-                                    bridge = monacoBridge,
-                                    onEditorTap = {
-                                        isTerminalFocused = false
-                                    }
+                                    bridge = monacoBridge
                                 )
 
                                 if (showTerminal) {
                                     TerminalScreen(
                                         onClose = {
                                             viewModel.setShowTerminal(false)
-                                            isTerminalFocused = false
                                         },
                                         initialPath = workspaceDir.absolutePath,
                                         totalContainerHeight = totalContainerHeight,
-                                        isCollapsed = isCollapsed,
-                                        onExpand = {
-                                            isTerminalFocused = true
-                                        },
                                         modifier = Modifier.align(Alignment.BottomCenter)
                                     )
                                 } else if (showSettings) {
@@ -921,8 +904,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CrestEditorScreen(
     onWebViewCreated: (WebView) -> Unit,
-    bridge: Any,
-    onEditorTap: () -> Unit = {}
+    bridge: Any
 ) {
     val context = LocalContext.current
     val webView = remember {
@@ -971,7 +953,6 @@ fun CrestEditorScreen(
 
             setOnTouchListener { v, event ->
                 if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                    onEditorTap()
                     if (!v.hasFocus()) {
                         v.requestFocus()
                     }
