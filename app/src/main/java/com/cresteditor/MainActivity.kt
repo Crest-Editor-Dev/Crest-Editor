@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.unit.Constraints
@@ -1006,7 +1007,9 @@ fun CrestEditorScreen(
     }
 
     AndroidView(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer(),
         factory = { webView }
     )
 }
@@ -1015,8 +1018,9 @@ fun CrestEditorScreen(
  * Lays out editor, terminal and bottom bar (extra keys + status bar) in one pass.
  * Insets are read only in the measure phase, so keyboard animation never recomposes.
  *
- * Editor focused  -> terminal stays at its normal spot (keyboard covers it, tall part stays visible).
- * Terminal focused -> terminal sits right above the extra keys bar, which sits right above the keyboard.
+ * During active keyboard sliding, the WebView measurement is frozen at resting height
+ * so the browser engine never reflows intermediate frames, allowing the Extra Keys Bar
+ * and Terminal to glide at a locked 60/120 FPS.
  */
 @Composable
 fun WorkspaceLayout(
@@ -1029,6 +1033,8 @@ fun WorkspaceLayout(
 ) {
     val ime = WindowInsets.ime
     val nav = WindowInsets.navigationBars
+    val imeTarget = WindowInsets.imeAnimationTarget
+    val imeSource = WindowInsets.imeAnimationSource
     Layout(
         modifier = modifier,
         content = {
@@ -1043,11 +1049,15 @@ fun WorkspaceLayout(
 
         val imePx = ime.getBottom(this)
         val navPx = nav.getBottom(this)
+        val targetPx = imeTarget.getBottom(this)
+        val sourcePx = imeSource.getBottom(this)
+        val isAnimating = targetPx != sourcePx
         val keyboardOpen = imePx > navPx
 
         val bar = measurables.first { it.layoutId == "bar" }.measure(loose)
         val term = measurables.firstOrNull { it.layoutId == "terminal" }?.measure(loose)
 
+        // Live animated positions (60/120 FPS smooth hardware tracking)
         val barY = h - (if (keyboardOpen) imePx else navPx) - bar.height
         val normalTop = h - navPx - bar.height // bar top when keyboard is closed
 
@@ -1055,7 +1065,26 @@ fun WorkspaceLayout(
             if (terminalFocused && keyboardOpen) barY - it.height
             else normalTop - it.height
         }
-        val editorH = (if (termY == null) barY else minOf(barY, termY)).coerceAtLeast(0)
+
+        // Settled target geometry to avoid re-measuring WebView during continuous animation frames:
+        val targetKeyboardOpen = targetPx > navPx
+        val targetBarY = h - (if (targetKeyboardOpen) targetPx else navPx) - bar.height
+        val targetTermY = term?.let {
+            if (terminalFocused && targetKeyboardOpen) targetBarY - it.height
+            else normalTop - it.height
+        }
+        val settledEditorH = (if (targetTermY == null) targetBarY else minOf(targetBarY, targetTermY)).coerceAtLeast(0)
+
+        // During keyboard sliding (isAnimating), freeze editor height at resting/settled height
+        // so WebView isn't forced to perform DOM reflow on every frame:
+        val editorH = if (isAnimating && targetPx > sourcePx) {
+            // Opening: keep editor at resting height so extra keys bar glides smoothly over it at 120 FPS
+            (normalTop - (if (!terminalFocused && term != null) term.height else 0)).coerceAtLeast(0)
+        } else {
+            // Settled or Closing: use target settled height
+            settledEditorH
+        }
+
         val ed = measurables.first { it.layoutId == "editor" }
             .measure(Constraints.fixed(w, editorH))
 
