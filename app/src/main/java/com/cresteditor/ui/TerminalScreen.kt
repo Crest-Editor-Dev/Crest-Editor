@@ -69,9 +69,11 @@ fun TerminalScreen(
     onClose: () -> Unit,
     initialPath: String? = null,
     totalContainerHeight: Dp = 600.dp,
+    onTerminalFocus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val currentOnTerminalFocus by androidx.compose.runtime.rememberUpdatedState(onTerminalFocus)
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -115,6 +117,7 @@ fun TerminalScreen(
     }
 
     fun showKeyboard() {
+        currentOnTerminalFocus()
         terminalViewRef?.let { view ->
             view.requestFocus()
             val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
@@ -381,6 +384,13 @@ fun TerminalScreen(
                         setTextSize(36)
                         isFocusable = true
                         isFocusableInTouchMode = true
+                        setOnTouchListener { v, event ->
+                            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                                currentOnTerminalFocus()
+                                if (!v.hasFocus()) v.requestFocus()
+                            }
+                            false
+                        }
                     }
                     terminalViewRef = view
 

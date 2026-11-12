@@ -12,6 +12,7 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -20,6 +21,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +45,8 @@ import com.cresteditor.ui.theme.*
 import com.cresteditor.workspace.WorkspaceManager
 import kotlinx.coroutines.launch
 import java.io.File
+
+enum class ActiveFocus { NONE, MONACO, TERMINAL }
 
 class MainActivity : ComponentActivity() {
 
@@ -79,6 +85,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         rootfsManager = RootfsManager(this)
@@ -595,6 +602,8 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                var activeFocus by remember { mutableStateOf(ActiveFocus.NONE) }
+
                 ModalNavigationDrawer(
                     drawerState = drawerState,
                     gesturesEnabled = drawerState.isOpen,
@@ -612,6 +621,7 @@ class MainActivity : ComponentActivity() {
                                     scope.launch {
                                         drawerState.close()
                                         if (!item.isDirectory) {
+                                            activeFocus = ActiveFocus.MONACO
                                             viewModel.openFile(File(item.path), webView)
                                         }
                                     }
@@ -632,6 +642,7 @@ class MainActivity : ComponentActivity() {
                                     scope.launch {
                                         drawerState.close()
                                         viewModel.setShowTerminal(true)
+                                        activeFocus = ActiveFocus.TERMINAL
                                     }
                                 },
                                 onSettingsClick = {
@@ -647,9 +658,16 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 ) {
-                    Scaffold(
-                        topBar = {
-                            Column {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(CrestBackground)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .statusBarsPadding()
+                        ) {
                                 CrestTopBar(
                                     projectName = "workspace / " + (openTabs.find { it.id == activeTabId }?.title ?: ""),
                                     onMenuClick = {
@@ -677,16 +695,96 @@ class MainActivity : ComponentActivity() {
                                     tabs = openTabs,
                                     activeTabId = activeTabId,
                                     onTabSelect = { tabId ->
+                                        activeFocus = ActiveFocus.MONACO
                                         viewModel.openFile(File(tabId), webView)
                                     },
                                     onTabClose = { tabId ->
                                         viewModel.closeTab(tabId, webView)
                                     }
                                 )
-                            }
-                        },
-                        bottomBar = {
-                            Column {
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                val totalContainerHeight = maxHeight
+
+                                WorkspaceLayout(
+                                    showTerminal = showTerminal,
+                                    terminalFocused = activeFocus == ActiveFocus.TERMINAL,
+                                    modifier = Modifier.fillMaxSize(),
+                                    editor = {
+                                        Box(modifier = Modifier.fillMaxSize()) {
+                                            CrestEditorScreen(
+                                                onWebViewCreated = { wv ->
+                                                    webView = wv
+                                                    monacoBridge.setWebView(wv)
+                                                    if (activeTabId.isNotEmpty()) {
+                                                        viewModel.openFile(File(activeTabId), wv)
+                                                    }
+                                                },
+                                                bridge = monacoBridge,
+                                                onEditorFocus = { activeFocus = ActiveFocus.MONACO }
+                                            )
+
+                                            if (!showTerminal && showSettings) {
+                                                SettingsScreen(
+                                                    settingsManager = settingsManager,
+                                                    onClose = {
+                                                        viewModel.setShowSettings(false)
+                                                    },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+
+                                if (!showTerminal && !showSettings && openTabs.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(CrestBackground),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(
+                                                imageVector = Icons.Default.Code,
+                                                contentDescription = null,
+                                                tint = CrestTextSecondary,
+                                                modifier = Modifier.size(48.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                            Text(
+                                                text = "No Open Files",
+                                                color = CrestTextSecondary,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "Select a file from the menu drawer to start editing",
+                                                color = CrestTextSecondary.copy(alpha = 0.7f),
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                }
+                                        }
+                                    },
+                                    terminal = {
+                                        TerminalScreen(
+                                            onClose = {
+                                                viewModel.setShowTerminal(false)
+                                                activeFocus = ActiveFocus.MONACO
+                                            },
+                                            initialPath = workspaceDir.absolutePath,
+                                            totalContainerHeight = totalContainerHeight,
+                                            onTerminalFocus = { activeFocus = ActiveFocus.TERMINAL }
+                                        )
+                                    },
+                                    bottomBar = {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
                                 TermuxExtraKeysToolbar(
                                     isCtrlActive = isCtrlActive,
                                     isCtrlLocked = isCtrlLocked,
@@ -728,7 +826,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onToggleKeyboard = {
                                         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                        if (showTerminal) {
+                                        if (activeFocus == ActiveFocus.TERMINAL) {
                                             TerminalSessionManager.activeClient?.terminalView?.let { view ->
                                                 view.requestFocus()
                                                 imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
@@ -741,7 +839,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onKeyClick = { key ->
-                                        if (showTerminal) {
+                                        if (activeFocus == ActiveFocus.TERMINAL) {
                                             TerminalSessionManager.activeSession?.write(key)
                                         } else {
                                             when (key) {
@@ -772,77 +870,9 @@ class MainActivity : ComponentActivity() {
                                 CrestStatusBar(
                                     language = activeLanguage
                                 )
-                            }
-                        }
-                    ) { innerPadding ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(innerPadding)
-                        ) {
-                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                                val totalContainerHeight = maxHeight
-
-                                CrestEditorScreen(
-                                    onWebViewCreated = { wv ->
-                                        webView = wv
-                                        monacoBridge.setWebView(wv)
-                                        if (activeTabId.isNotEmpty()) {
-                                            viewModel.openFile(File(activeTabId), wv)
-                                        }
-                                    },
-                                    bridge = monacoBridge
-                                )
-
-                                if (showTerminal) {
-                                    TerminalScreen(
-                                        onClose = {
-                                            viewModel.setShowTerminal(false)
-                                        },
-                                        initialPath = workspaceDir.absolutePath,
-                                        totalContainerHeight = totalContainerHeight,
-                                        modifier = Modifier.align(Alignment.BottomCenter)
-                                    )
-                                } else if (showSettings) {
-                                    SettingsScreen(
-                                        settingsManager = settingsManager,
-                                        onClose = {
-                                            viewModel.setShowSettings(false)
-                                        },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-
-                                if (!showTerminal && !showSettings && openTabs.isEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(CrestBackground),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Icon(
-                                                imageVector = Icons.Default.Code,
-                                                contentDescription = null,
-                                                tint = CrestTextSecondary,
-                                                modifier = Modifier.size(48.dp)
-                                            )
-                                            Spacer(modifier = Modifier.height(12.dp))
-                                            Text(
-                                                text = "No Open Files",
-                                                color = CrestTextSecondary,
-                                                fontSize = 16.sp,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = "Select a file from the menu drawer to start editing",
-                                                color = CrestTextSecondary.copy(alpha = 0.7f),
-                                                fontSize = 12.sp
-                                            )
                                         }
                                     }
-                                }
+                                )
                             }
                         }
                     }
@@ -904,9 +934,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CrestEditorScreen(
     onWebViewCreated: (WebView) -> Unit,
-    bridge: Any
+    bridge: Any,
+    onEditorFocus: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val currentOnEditorFocus by rememberUpdatedState(onEditorFocus)
     val webView = remember {
         WebView(context).apply {
             WebView.setWebContentsDebuggingEnabled(true)
@@ -953,6 +985,7 @@ fun CrestEditorScreen(
 
             setOnTouchListener { v, event ->
                 if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                    currentOnEditorFocus()
                     if (!v.hasFocus()) {
                         v.requestFocus()
                     }
@@ -976,4 +1009,60 @@ fun CrestEditorScreen(
         modifier = Modifier.fillMaxSize(),
         factory = { webView }
     )
+}
+
+/**
+ * Lays out editor, terminal and bottom bar (extra keys + status bar) in one pass.
+ * Insets are read only in the measure phase, so keyboard animation never recomposes.
+ *
+ * Editor focused  -> terminal stays at its normal spot (keyboard covers it, tall part stays visible).
+ * Terminal focused -> terminal sits right above the extra keys bar, which sits right above the keyboard.
+ */
+@Composable
+fun WorkspaceLayout(
+    showTerminal: Boolean,
+    terminalFocused: Boolean,
+    modifier: Modifier = Modifier,
+    editor: @Composable () -> Unit,
+    terminal: @Composable () -> Unit,
+    bottomBar: @Composable () -> Unit
+) {
+    val ime = WindowInsets.ime
+    val nav = WindowInsets.navigationBars
+    Layout(
+        modifier = modifier,
+        content = {
+            Box(Modifier.layoutId("editor")) { editor() }
+            if (showTerminal) Box(Modifier.layoutId("terminal")) { terminal() }
+            Box(Modifier.layoutId("bar")) { bottomBar() }
+        }
+    ) { measurables, constraints ->
+        val w = constraints.maxWidth
+        val h = constraints.maxHeight
+        val loose = Constraints(minWidth = w, maxWidth = w, minHeight = 0, maxHeight = h)
+
+        val imePx = ime.getBottom(this)
+        val navPx = nav.getBottom(this)
+        val keyboardOpen = imePx > navPx
+
+        val bar = measurables.first { it.layoutId == "bar" }.measure(loose)
+        val term = measurables.firstOrNull { it.layoutId == "terminal" }?.measure(loose)
+
+        val barY = h - (if (keyboardOpen) imePx else navPx) - bar.height
+        val normalTop = h - navPx - bar.height // bar top when keyboard is closed
+
+        val termY = term?.let {
+            if (terminalFocused && keyboardOpen) barY - it.height
+            else normalTop - it.height
+        }
+        val editorH = (if (termY == null) barY else minOf(barY, termY)).coerceAtLeast(0)
+        val ed = measurables.first { it.layoutId == "editor" }
+            .measure(Constraints.fixed(w, editorH))
+
+        layout(w, h) {
+            ed.place(0, 0)
+            if (term != null && termY != null) term.place(0, termY)
+            bar.place(0, barY)
+        }
+    }
 }
