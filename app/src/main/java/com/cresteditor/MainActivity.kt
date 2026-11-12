@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.*
@@ -1022,6 +1023,7 @@ fun CrestEditorScreen(
  * so the browser engine never reflows intermediate frames, allowing the Extra Keys Bar
  * and Terminal to glide at a locked 60/120 FPS.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WorkspaceLayout(
     showTerminal: Boolean,
