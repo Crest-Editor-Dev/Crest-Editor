@@ -81,6 +81,13 @@ Crest-Editor
 - **Error Handling**: Never silently swallow exceptions. Always log or propagate errors to the UI when user feedback is required.
 - **Code Preservation**: Maintain documentation and existing comments unless specifically modifying the associated logic. Explain *why* tricky code exists.
 
+### 🧩 Modular Architecture & Component Naming (STRICT)
+- **No Giant / God Files**: Never dump multiple complex widgets, dialogs, or state handlers into one massive screen file (e.g. 500+ lines). Split independent UI controls and widgets into dedicated, focused files under `ui/components/`.
+- **Clean Idiomatic Naming (No Unnecessary Brand Prefixes)**:
+  - Do NOT prefix generic, reusable components with `Crest...` (e.g. use `NumberField.kt`, `NumberStepper.kt`, `SegmentedControl.kt` — NOT `CrestNumberStepper.kt` or `CrestNumberField.kt`).
+  - Reserve `Crest...` strictly for root-level brand entities (like `CrestTheme`, `CrestEditorApp`, `CrestFileDrawer`). Follow the clean conventions of Zed and VS Code.
+- **Single Responsibility**: Keep component files focused, typically under 150–200 lines, with clean parameter contracts and zero hidden side effects.
+
 ### Editor Core (TypeScript / Vite)
 - **Mobile Touch First**: Monaco was designed for desktop; all changes must preserve touch selection handles, context menus, and mobile virtual keyboard (IME) compatibility.
 - **Bundle & Memory Efficiency**: Android WebViews run in constrained memory. Keep Shiki themes/grammars and web workers optimized.

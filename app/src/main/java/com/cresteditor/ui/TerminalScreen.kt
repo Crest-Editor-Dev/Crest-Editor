@@ -69,6 +69,8 @@ fun TerminalScreen(
     onClose: () -> Unit,
     initialPath: String? = null,
     totalContainerHeight: Dp = 600.dp,
+    isMaximized: Boolean = false,
+    onMaximizeChange: (Boolean) -> Unit = {},
     onTerminalFocus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -86,7 +88,6 @@ fun TerminalScreen(
     val rootfsManager = remember { RootfsManager(context) }
 
     // State for VS Code Splitter & Maximize
-    var isMaximized by remember { mutableStateOf(false) }
     var panelHeightFraction by remember { mutableFloatStateOf(0.40f) } // Exact VS Code 40% default!
     val minHeight = 77.dp // Exact VS Code 77px min height
     val density = LocalDensity.current
@@ -136,12 +137,13 @@ fun TerminalScreen(
 
     val handleClose = {
         hideKeyboard()
+        onMaximizeChange(false)
         onClose()
     }
 
     BackHandler {
         if (isMaximized) {
-            isMaximized = false
+            onMaximizeChange(false)
         } else {
             handleClose()
         }
@@ -175,19 +177,35 @@ fun TerminalScreen(
                 .height(10.dp)
                 .background(Color(0xFF1E1E1E))
                 .pointerInput(totalHeightPx) {
-                    detectVerticalDragGestures { change, dragAmount ->
-                        change.consume()
-                        // Dragging UP (-dragAmount) expands the bottom panel
-                        // Dragging DOWN (+dragAmount) shrinks the bottom panel
-                        val deltaFraction = -dragAmount / totalHeightPx
-                        panelHeightFraction = (panelHeightFraction + deltaFraction).coerceIn(0.15f, 0.95f)
-                        if (isMaximized) isMaximized = false
-                    }
+                    detectVerticalDragGestures(
+                        onDragEnd = {
+                            // VS Code Snapping Engine:
+                            if (panelHeightFraction >= 0.80f) {
+                                // Snap to Top: Maximize panel!
+                                onMaximizeChange(true)
+                            } else if (panelHeightFraction <= 0.20f) {
+                                // Snap to Bottom: Close panel!
+                                handleClose()
+                            }
+                        },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            // Dragging UP (-dragAmount) expands the bottom panel
+                            // Dragging DOWN (+dragAmount) shrinks the bottom panel
+                            val deltaFraction = -dragAmount / totalHeightPx
+                            if (isMaximized) {
+                                onMaximizeChange(false)
+                                panelHeightFraction = 0.79f
+                            } else {
+                                panelHeightFraction = (panelHeightFraction + deltaFraction).coerceIn(0.15f, 0.95f)
+                            }
+                        }
+                    )
                 }
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onDoubleTap = {
-                            isMaximized = !isMaximized
+                            onMaximizeChange(!isMaximized)
                         }
                     )
                 },
@@ -339,7 +357,7 @@ fun TerminalScreen(
             Spacer(modifier = Modifier.width(2.dp))
 
             IconButton(
-                onClick = { isMaximized = !isMaximized },
+                onClick = { onMaximizeChange(!isMaximized) },
                 modifier = Modifier.size(24.dp)
             ) {
                 Icon(

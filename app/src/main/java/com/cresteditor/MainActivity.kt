@@ -108,9 +108,16 @@ class MainActivity : ComponentActivity() {
                 val showSettings by viewModel.showSettings.collectAsState()
 
                 var showCommandPalette by remember { mutableStateOf(false) }
+                var isTerminalMaximized by remember { mutableStateOf(false) }
                 var commandPaletteInitialQuery by remember { mutableStateOf(">") }
                 var currentLineCount by remember { mutableStateOf(1) }
                 val commandRegistry = remember { CommandRegistry() }
+
+                LaunchedEffect(showTerminal) {
+                    if (!showTerminal) {
+                        isTerminalMaximized = false
+                    }
+                }
 
                 DisposableEffect(Unit) {
                     onToggleCommandPalette = { prefix ->
@@ -693,17 +700,19 @@ class MainActivity : ComponentActivity() {
                                         onToggleCommandPalette?.invoke("")
                                     }
                                 )
-                                CrestTabBar(
-                                    tabs = openTabs,
-                                    activeTabId = activeTabId,
-                                    onTabSelect = { tabId ->
-                                        activeFocus = ActiveFocus.MONACO
-                                        viewModel.openFile(File(tabId), webView)
-                                    },
-                                    onTabClose = { tabId ->
-                                        viewModel.closeTab(tabId, webView)
-                                    }
-                                )
+                                if (!showTerminal || !isTerminalMaximized) {
+                                    CrestTabBar(
+                                        tabs = openTabs,
+                                        activeTabId = activeTabId,
+                                        onTabSelect = { tabId ->
+                                            activeFocus = ActiveFocus.MONACO
+                                            viewModel.openFile(File(tabId), webView)
+                                        },
+                                        onTabClose = { tabId ->
+                                            viewModel.closeTab(tabId, webView)
+                                        }
+                                    )
+                                }
                         }
 
                         Box(
@@ -777,11 +786,14 @@ class MainActivity : ComponentActivity() {
                                     terminal = {
                                         TerminalScreen(
                                             onClose = {
+                                                isTerminalMaximized = false
                                                 viewModel.setShowTerminal(false)
                                                 activeFocus = ActiveFocus.MONACO
                                             },
                                             initialPath = workspaceDir.absolutePath,
                                             totalContainerHeight = totalContainerHeight,
+                                            isMaximized = isTerminalMaximized,
+                                            onMaximizeChange = { isTerminalMaximized = it },
                                             onTerminalFocus = { activeFocus = ActiveFocus.TERMINAL }
                                         )
                                     },
@@ -1057,23 +1069,29 @@ fun WorkspaceLayout(
         val keyboardOpen = imePx > navPx
 
         val bar = measurables.first { it.layoutId == "bar" }.measure(loose)
-        val term = measurables.firstOrNull { it.layoutId == "terminal" }?.measure(loose)
 
         // Live animated positions (60/120 FPS smooth hardware tracking)
         val barY = h - (if (keyboardOpen) imePx else navPx) - bar.height
         val normalTop = h - navPx - bar.height // bar top when keyboard is closed
 
-        val termY = term?.let {
-            if (terminalFocused && keyboardOpen) barY - it.height
-            else normalTop - it.height
-        }
-
         // Settled target geometry to avoid re-measuring WebView during continuous animation frames:
         val targetKeyboardOpen = targetPx > navPx
         val targetBarY = h - (if (targetKeyboardOpen) targetPx else navPx) - bar.height
-        val targetTermY = term?.let {
-            if (terminalFocused && targetKeyboardOpen) targetBarY - it.height
+
+        val maxTermH = (if (terminalFocused && targetKeyboardOpen) targetBarY else normalTop).coerceAtLeast(0)
+        val termConstraints = Constraints(minWidth = w, maxWidth = w, minHeight = 0, maxHeight = maxTermH)
+        val term = measurables.firstOrNull { it.layoutId == "terminal" }?.measure(termConstraints)
+
+        val termY = term?.let {
+            val y = if (terminalFocused && keyboardOpen) barY - it.height
             else normalTop - it.height
+            y.coerceAtLeast(0)
+        }
+
+        val targetTermY = term?.let {
+            val y = if (terminalFocused && targetKeyboardOpen) targetBarY - it.height
+            else normalTop - it.height
+            y.coerceAtLeast(0)
         }
         val settledEditorH = (if (targetTermY == null) targetBarY else minOf(targetBarY, targetTermY)).coerceAtLeast(0)
 
