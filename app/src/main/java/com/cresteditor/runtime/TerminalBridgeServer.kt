@@ -261,7 +261,20 @@ object TerminalBridgeServer {
             CMD_NAME=${'$'}(basename "${'$'}0")
 
             # Check if invoked as a get operation
-            if [ "${'$'}CMD_NAME" = "termux-clipboard-get" ] || [ "${'$'}CMD_NAME" = "wl-paste" ] || [ "${'$'}1" = "-o" ] || [ "${'$'}1" = "--out" ] || [ "${'$'}1" = "get" ]; then
+            for arg in "${'$'}@"; do
+                case "${'$'}arg" in
+                    -o|-out|--output|--out|get)
+                        exec 3<>/dev/tcp/127.0.0.1/${'$'}PORT 2>/dev/null || exit 1
+                        echo "CLIP_GET" >&3
+                        cat <&3
+                        exec 3<&-
+                        exec 3>&-
+                        exit 0
+                        ;;
+                esac
+            done
+
+            if [ "${'$'}CMD_NAME" = "termux-clipboard-get" ] || [ "${'$'}CMD_NAME" = "wl-paste" ]; then
                 exec 3<>/dev/tcp/127.0.0.1/${'$'}PORT 2>/dev/null || exit 1
                 echo "CLIP_GET" >&3
                 cat <&3
@@ -271,22 +284,21 @@ object TerminalBridgeServer {
             fi
 
             # Set operation (termux-clipboard-set, wl-copy, xclip, xsel, crest-clipboard set)
-            CONTENT=""
+            ARGS=()
             for arg in "${'$'}@"; do
                 case "${'$'}arg" in
-                    -selection|-b|-i|-o|clipboard|primary|set)
+                    -*|clipboard|primary|secondary|set)
+                        # Skip all option flags and keywords
                         ;;
                     *)
-                        if [ -z "${'$'}CONTENT" ]; then
-                            CONTENT="${'$'}arg"
-                        else
-                            CONTENT="${'$'}CONTENT ${'$'}arg"
-                        fi
+                        ARGS+=("${'$'}arg")
                         ;;
                 esac
             done
 
-            if [ -z "${'$'}CONTENT" ]; then
+            if [ ${'$'}{#ARGS[@]} -gt 0 ]; then
+                CONTENT="${'$'}{ARGS[*]}"
+            else
                 CONTENT="${'$'}(cat)"
             fi
 
