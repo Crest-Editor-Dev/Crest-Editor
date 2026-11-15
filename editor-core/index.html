@@ -4,9 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>CrestEditor Mobile Editor</title>
+  <script>
+    (function() {
+      try {
+        const theme = localStorage.getItem('crest_theme') || 'vs-dark';
+        const isLight = theme === 'vs' || theme === 'vs-light' || theme === 'light-plus';
+        const bg = isLight ? '#ffffff' : (theme === 'hc-black' ? '#000000' : '#1e1e1e');
+        document.documentElement.style.backgroundColor = bg;
+      } catch(_) {}
+    })();
+  </script>
+  <style>
+    html, body, #app, #editor-container {
+      background-color: #1e1e1e;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
   <link rel="stylesheet" href="./src/styles.css">
 </head>
-<body>
+<body style="background-color: #1e1e1e; margin: 0;">
   <div id="app">
     <main id="editor-container">
       <div id="floating-toolbar">

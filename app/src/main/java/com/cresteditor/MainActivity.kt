@@ -330,6 +330,7 @@ class MainActivity : ComponentActivity() {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .background(CrestSurfaceHeader)
                                 .statusBarsPadding()
                         ) {
                                 CrestTopBar(
@@ -393,6 +394,7 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 bridge = monacoBridge,
+                                                backgroundColor = settingsManager.getThemeBackgroundColor(),
                                                 onEditorFocus = { activeFocus = ActiveFocus.MONACO }
                                             )
 
@@ -533,7 +535,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                if (showSettings) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showSettings,
+                    enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(initialOffsetY = { it / 8 }),
+                    exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { it / 8 })
+                ) {
                     SettingsScreen(
                         settingsManager = settingsManager,
                         onClose = {
@@ -612,12 +618,14 @@ class MainActivity : ComponentActivity() {
 fun CrestEditorScreen(
     onWebViewCreated: (WebView) -> Unit,
     bridge: Any,
+    backgroundColor: Int = 0xFF1E1E1E.toInt(),
     onEditorFocus: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val currentOnEditorFocus by rememberUpdatedState(onEditorFocus)
     val webView = remember {
         WebView(context).apply {
+            setBackgroundColor(backgroundColor)
             WebView.setWebContentsDebuggingEnabled(true)
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,

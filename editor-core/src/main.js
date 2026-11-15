@@ -79,8 +79,18 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
     return themeName;
   }
 
-  function applyShikiTheme(themeName) {
+  async function applyShikiTheme(themeName) {
     const resolved = resolveTheme(themeName);
+    try {
+      localStorage.setItem('crest_theme', resolved);
+    } catch (_) {}
+    if (shikiHighlighter && !shikiHighlighter.getLoadedThemes().includes(resolved)) {
+      try {
+        await shikiHighlighter.loadTheme(resolved);
+      } catch (e) {
+        console.warn('[Crest Shiki] Could not dynamically load theme:', resolved, e);
+      }
+    }
     try {
       monaco.editor.setTheme(resolved);
     } catch (e) {
@@ -127,13 +137,13 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
   async function initShiki() {
     try {
       console.log('[Crest Shiki] Initializing TextMate syntax engine...');
+      const desiredTheme = currentSettings['editor.theme'] || 'vs-dark';
+      const resolvedTheme = resolveTheme(desiredTheme);
+
+      // Fast on-demand load: start with active themes and essential core languages
       shikiHighlighter = await createHighlighter({
-        themes: ['dark-plus', 'light-plus', 'github-dark', 'one-dark-pro', 'dracula'],
-        langs: [
-          'javascript', 'typescript', 'python', 'kotlin', 'java',
-          'c', 'cpp', 'rust', 'go', 'html', 'css', 'json',
-          'yaml', 'shellscript', 'markdown', 'sql', 'xml'
-        ]
+        themes: [resolvedTheme, resolvedTheme === 'dark-plus' ? 'light-plus' : 'dark-plus'],
+        langs: ['javascript', 'typescript', 'html', 'css', 'json']
       });
 
       const existingLangs = new Set(monaco.languages.getLanguages().map(l => l.id));
@@ -159,14 +169,13 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
         });
       } catch (_) {}
 
-      const desiredTheme = currentSettings['editor.theme'] || 'vs-dark';
       applyShikiTheme(desiredTheme);
 
       if (footerStatusText) {
         footerStatusText.textContent = 'Crest Mobile • TextMate Active';
       }
 
-      console.log('[Crest Shiki] TextMate engine successfully loaded with', shikiHighlighter.getLoadedLanguages().length, 'grammars!');
+      console.log('[Crest Shiki] TextMate engine successfully initialized (fast on-demand mode)!');
     } catch (err) {
       console.error('[Crest Shiki] Failed to initialize TextMate engine, fallback to Monaco Monarch:', err);
     }

@@ -374,6 +374,19 @@ class SettingsManager(private val context: Context) {
         return json
     }
 
+    /**
+     * Resolves the primary background color matching the configured editor theme
+     * for instant pre-painting on native WebView canvas and splash layers.
+     */
+    fun getThemeBackgroundColor(): Int {
+        val theme = getString(KEY_EDITOR_THEME, "vs-dark")
+        return when (theme) {
+            "vs", "vs-light", "light-plus" -> android.graphics.Color.WHITE
+            "hc-black" -> android.graphics.Color.BLACK
+            else -> 0xFF1E1E1E.toInt()
+        }
+    }
+
     // Backward compatibility properties for any legacy components
     var showHiddenFiles: Boolean
         get() = getOrDefault(KEY_FILES_SHOW_HIDDEN, false)

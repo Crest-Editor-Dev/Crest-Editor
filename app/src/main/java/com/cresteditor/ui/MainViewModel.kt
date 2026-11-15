@@ -9,10 +9,12 @@ import com.cresteditor.ui.components.CrestTabItem
 import com.cresteditor.ui.components.FileTreeItem
 import com.cresteditor.workspace.WorkspaceManager
 import com.cresteditor.workspace.WorkspaceFileWatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -52,7 +54,7 @@ class MainViewModel : ViewModel() {
 
     fun loadWorkspace(context: Context, webView: WebView? = null) {
         startFileWatcher(context)
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
             val items = WorkspaceManager.listFilesRecursively(workspaceDir)
             _fileTreeItems.value = items
@@ -154,7 +156,7 @@ class MainViewModel : ViewModel() {
     }
 
     fun refreshWorkspace(context: Context) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
             _fileTreeItems.value = WorkspaceManager.listFilesRecursively(workspaceDir)
         }
@@ -163,7 +165,7 @@ class MainViewModel : ViewModel() {
     fun openFile(file: File, webView: WebView?) {
         if (file.isDirectory) return
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val path = file.absolutePath
             val language = WorkspaceManager.detectLanguage(file.name)
             val currentTabs = _openTabs.value
@@ -173,11 +175,13 @@ class MainViewModel : ViewModel() {
                 // Tab is ALREADY OPEN: switch to in-memory model without reading or overwriting from disk
                 _activeTabId.value = path
                 _activeLanguage.value = language
-                MonacoBridge.openFile(webView, path, null, language, existingTab.isModified)
+                withContext(Dispatchers.Main) {
+                    MonacoBridge.openFile(webView, path, null, language, existingTab.isModified)
+                }
                 return@launch
             }
 
-            // Fresh file open: read content from disk
+            // Fresh file open: read content from disk on background thread
             val readResult = WorkspaceManager.readFileContent(file)
             val content = readResult.getOrDefault("")
 
@@ -189,7 +193,9 @@ class MainViewModel : ViewModel() {
             _activeTabId.value = path
             _activeLanguage.value = language
 
-            MonacoBridge.openFile(webView, path, content, language, false)
+            withContext(Dispatchers.Main) {
+                MonacoBridge.openFile(webView, path, content, language, false)
+            }
         }
     }
 
@@ -218,7 +224,11 @@ class MainViewModel : ViewModel() {
         val currentActive = _activeTabId.value
         if (currentActive.isEmpty()) return
 
-        _openTabs.value = _openTabs.value.map { tab ->
+        val currentTabs = _openTabs.value
+        val activeTab = currentTabs.find { it.id == currentActive } ?: return
+        if (activeTab.isModified == isModified) return // ALREADY MATCHES: Avoid recomposition storm on every keystroke!
+
+        _openTabs.value = currentTabs.map { tab ->
             if (tab.id == currentActive) {
                 tab.copy(isModified = isModified)
             } else {
