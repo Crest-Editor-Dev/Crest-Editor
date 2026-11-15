@@ -379,7 +379,7 @@ class SettingsManager(private val context: Context) {
      * for instant pre-painting on native WebView canvas and splash layers.
      */
     fun getThemeBackgroundColor(): Int {
-        val theme = getString(KEY_EDITOR_THEME, "vs-dark")
+        val theme = getOrDefault<String>(KEY_EDITOR_THEME, "vs-dark")
         return when (theme) {
             "vs", "vs-light", "light-plus" -> android.graphics.Color.WHITE
             "hc-black" -> android.graphics.Color.BLACK
