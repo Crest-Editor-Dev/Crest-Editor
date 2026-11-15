@@ -30,19 +30,19 @@ fun ActivityBarItem(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(52.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        // Iconic VS Code 2dp vertical active indicator on the far left edge
+        // Iconic VS Code vertical active indicator on the far left edge
         if (isSelected) {
             Box(
                 modifier = Modifier
-                    .width(2.dp)
-                    .height(24.dp)
+                    .width(2.5.dp)
+                    .height(28.dp)
                     .background(DrawerTheme.ActivityBarIndicator)
                     .align(Alignment.CenterStart)
             )
@@ -52,13 +52,13 @@ fun ActivityBarItem(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isSelected) DrawerTheme.ActivityBarFg else DrawerTheme.ActivityBarInactive,
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(26.dp)
         )
     }
 }
 
 /**
- * VS Code Activity Bar (48dp dock on left side).
+ * VS Code Activity Bar (56dp dock on left side).
  */
 @Composable
 fun ActivityBar(
@@ -70,7 +70,7 @@ fun ActivityBar(
 ) {
     Column(
         modifier = modifier
-            .width(48.dp)
+            .width(56.dp)
             .fillMaxHeight()
             .background(DrawerTheme.ActivityBarBg)
             .border(
