@@ -10,11 +10,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -28,12 +30,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
@@ -48,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import com.cresteditor.icons.Codicons
 import com.cresteditor.ui.theme.*
+import kotlin.math.abs
 import com.cresteditor.workspace.WorkspaceManager
 import java.io.File
 
@@ -151,6 +160,8 @@ fun CrestFileDrawer(
     var touchOffset by remember { mutableStateOf(DpOffset.Zero) }
     var emptyAreaOffset by remember { mutableStateOf(DpOffset.Zero) }
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager }
 
     fun startInlineCreation(isFolder: Boolean, parentPath: String? = null) {
@@ -203,7 +214,11 @@ fun CrestFileDrawer(
                 icon = Codicons.Files,
                 contentDescription = "Explorer",
                 isSelected = activeView == SideBarView.EXPLORER,
-                onClick = { activeView = SideBarView.EXPLORER }
+                onClick = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    activeView = SideBarView.EXPLORER
+                }
             )
 
             // Search Item
@@ -211,7 +226,11 @@ fun CrestFileDrawer(
                 icon = Codicons.Search,
                 contentDescription = "Search",
                 isSelected = activeView == SideBarView.SEARCH,
-                onClick = { activeView = SideBarView.SEARCH }
+                onClick = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    activeView = SideBarView.SEARCH
+                }
             )
 
             // Source Control (Git) Item
@@ -219,7 +238,11 @@ fun CrestFileDrawer(
                 icon = Codicons.SourceControl,
                 contentDescription = "Source Control",
                 isSelected = activeView == SideBarView.SOURCE_CONTROL,
-                onClick = { activeView = SideBarView.SOURCE_CONTROL }
+                onClick = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    activeView = SideBarView.SOURCE_CONTROL
+                }
             )
 
             // Terminal Launcher
@@ -227,7 +250,11 @@ fun CrestFileDrawer(
                 icon = Codicons.Terminal,
                 contentDescription = "Terminal",
                 isSelected = false,
-                onClick = onTerminalClick
+                onClick = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    onTerminalClick()
+                }
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -237,7 +264,11 @@ fun CrestFileDrawer(
                 icon = Codicons.SettingsGear,
                 contentDescription = "Settings",
                 isSelected = false,
-                onClick = onSettingsClick
+                onClick = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                    onSettingsClick()
+                }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -848,10 +879,37 @@ fun CrestFileDrawer(
                     // ---------------------------------------------------------
                     // Search Pane View
                     // ---------------------------------------------------------
+                    val searchListState = rememberLazyListState()
+                    val searchNestedScrollConnection = remember {
+                        object : NestedScrollConnection {
+                            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                                if (abs(available.y) > 1f || abs(available.x) > 1f) {
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                }
+                                return Offset.Zero
+                            }
+                        }
+                    }
+
+                    LaunchedEffect(searchListState.isScrollInProgress) {
+                        if (searchListState.isScrollInProgress) {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                        }
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(14.dp)
+                            .nestedScroll(searchNestedScrollConnection)
+                            .pointerInput(Unit) {
+                                detectTapGestures(onTap = {
+                                    focusManager.clearFocus()
+                                    keyboardController?.hide()
+                                })
+                            }
                     ) {
                         Text(
                             text = "SEARCH",
@@ -879,7 +937,7 @@ fun CrestFileDrawer(
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = null,
-                                tint = VSCodeActivityBarInactive,
+                                tint = if (isFocused) VSCodeTextActive else VSCodeActivityBarInactive,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -902,12 +960,21 @@ fun CrestFileDrawer(
                                         color = VSCodeTextActive,
                                         fontSize = 12.5.sp
                                     ),
-                                    cursorBrush = SolidColor(VSCodeFocusBorder)
+                                    cursorBrush = SolidColor(VSCodeFocusBorder),
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    keyboardActions = KeyboardActions(onSearch = {
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                    })
                                 )
                             }
                             if (searchQuery.isNotEmpty()) {
                                 IconButton(
-                                    onClick = { searchQuery = "" },
+                                    onClick = {
+                                        searchQuery = ""
+                                        focusManager.clearFocus()
+                                        keyboardController?.hide()
+                                    },
                                     modifier = Modifier.size(18.dp)
                                 ) {
                                     Icon(
@@ -935,31 +1002,69 @@ fun CrestFileDrawer(
                                 modifier = Modifier.padding(bottom = 6.dp)
                             )
 
-                            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                                items(filteredFiles) { item ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { onFileSelect(item) }
-                                            .padding(vertical = 7.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        val iconData = getFileIcon(item.name)
-                                        Icon(
-                                            imageVector = iconData.first,
-                                            contentDescription = null,
-                                            tint = iconData.second,
-                                            modifier = Modifier.size(17.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = item.name,
-                                            color = VSCodeTextPrimary,
-                                            fontSize = 13.5.sp
-                                        )
+                            if (filteredFiles.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .pointerInput(Unit) {
+                                            detectDragGestures { _, _ ->
+                                                focusManager.clearFocus()
+                                                keyboardController?.hide()
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No files found matching '$searchQuery'.",
+                                        color = VSCodeActivityBarInactive,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            } else {
+                                LazyColumn(
+                                    state = searchListState,
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    items(filteredFiles) { item ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    focusManager.clearFocus()
+                                                    keyboardController?.hide()
+                                                    onFileSelect(item)
+                                                }
+                                                .padding(vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val iconData = getFileIcon(item.name)
+                                            Icon(
+                                                imageVector = iconData.first,
+                                                contentDescription = null,
+                                                tint = iconData.second,
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = item.name,
+                                                color = VSCodeTextPrimary,
+                                                fontSize = 13.5.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .pointerInput(Unit) {
+                                        detectDragGestures { _, _ ->
+                                            focusManager.clearFocus()
+                                            keyboardController?.hide()
+                                        }
+                                    }
+                            )
                         }
                     }
                 }
