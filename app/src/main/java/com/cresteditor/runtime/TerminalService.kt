@@ -34,6 +34,7 @@ class TerminalService : Service() {
         super.onCreate()
         createNotificationChannel()
         acquireWakeLock()
+        TerminalBridgeServer.start(this, filesDir, java.io.File(filesDir, "rootfs"))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -160,6 +161,7 @@ class TerminalService : Service() {
 
     override fun onDestroy() {
         releaseWakeLock()
+        TerminalBridgeServer.stop()
         super.onDestroy()
     }
 }

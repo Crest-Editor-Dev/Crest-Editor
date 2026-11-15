@@ -104,6 +104,7 @@ class RootfsManager(private val context: Context) {
                 fixPermissionsAndLinks()
                 ensureMountPointsExist()
                 ensureLegacySymlink()
+                TerminalBridgeServer.ensureBridgeScriptsInstalled(rootfsDir, filesDir)
                 onProgress("Void Linux environment active! ✔")
                 return true
             }
@@ -179,6 +180,7 @@ class RootfsManager(private val context: Context) {
                 ensureLegacySymlink()
                 fixPermissionsAndLinks()
                 ensureMountPointsExist()
+                TerminalBridgeServer.ensureBridgeScriptsInstalled(targetDir, filesDir)
 
                 onProgress("Void Linux RootFS initialized successfully! 🚀")
                 return true
@@ -760,6 +762,9 @@ class RootfsManager(private val context: Context) {
             } else null
         }.getOrNull()
 
+        TerminalBridgeServer.start(context, filesDir, rootfsDir)
+        TerminalBridgeServer.ensureBridgeScriptsInstalled(rootfsDir, filesDir)
+
         val env = mutableListOf(
             "PREFIX=$filesPath",
             "NATIVE_DIR=$nativeDir",
@@ -767,7 +772,8 @@ class RootfsManager(private val context: Context) {
             "TERM=xterm-256color",
             "PROOT=$prootBin",
             "LD_LIBRARY_PATH=$filesPath:$nativeDir",
-            "INITIAL_CWD=${normalizePath(workingDir.absolutePath)}"
+            "INITIAL_CWD=${normalizePath(workingDir.absolutePath)}",
+            "CREST_BRIDGE_PORT=${TerminalBridgeServer.activePort}"
         )
         if (!effectiveShell.isNullOrBlank()) {
             env.add("PREFERRED_SHELL=$effectiveShell")
