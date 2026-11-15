@@ -1,10 +1,9 @@
 package com.cresteditor.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import com.cresteditor.core.platform.ClipboardHelper
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -600,8 +599,7 @@ private fun VSCodeSettingRow(
                                 leadingIcon = { Icon(Icons.Default.ContentCopy, null, tint = VSCodeForeground, modifier = Modifier.size(16.dp)) },
                                 onClick = {
                                     showActionMenu = false
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("setting-id", definition.key))
+                                    ClipboardHelper.copyText(context, definition.key, "setting-id")
                                     Toast.makeText(context, "Copied: ${definition.key}", Toast.LENGTH_SHORT).show()
                                 }
                             )
@@ -610,9 +608,8 @@ private fun VSCodeSettingRow(
                                 leadingIcon = { Icon(Icons.Default.Code, null, tint = VSCodeForeground, modifier = Modifier.size(16.dp)) },
                                 onClick = {
                                     showActionMenu = false
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     val jsonSnippet = "\"${definition.key}\": ${if (currentValue is String) "\"$currentValue\"" else currentValue}"
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("setting-json", jsonSnippet))
+                                    ClipboardHelper.copyText(context, jsonSnippet, "setting-json")
                                     Toast.makeText(context, "Copied JSON snippet", Toast.LENGTH_SHORT).show()
                                 }
                             )

@@ -3,6 +3,8 @@ package com.cresteditor.editor
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import com.cresteditor.core.platform.ClipboardHelper
+import com.cresteditor.core.platform.KeyboardHelper
 import org.json.JSONObject
 import org.json.JSONTokener
 
@@ -23,19 +25,17 @@ class MonacoBridge(
     @JavascriptInterface
     fun showKeyboard() {
         webView?.post {
-            webView?.requestFocus()
-            val imm = context?.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
-            imm?.showSoftInput(webView, 0)
-            imm?.toggleSoftInput(android.view.inputmethod.InputMethodManager.SHOW_FORCED, 0)
+            webView?.let { wv ->
+                KeyboardHelper.show(wv)
+            }
         }
     }
 
     @JavascriptInterface
     fun hideKeyboard() {
         webView?.post {
-            val imm = context?.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
             webView?.let { wv ->
-                imm?.hideSoftInputFromWindow(wv.windowToken, 0)
+                KeyboardHelper.hide(wv)
             }
         }
     }
@@ -52,15 +52,8 @@ class MonacoBridge(
 
     @JavascriptInterface
     fun getClipboardText(): String {
-        return try {
-            val ctx = context ?: return ""
-            val clipboard = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-            val item = clipboard?.primaryClip?.getItemAt(0)
-            item?.coerceToText(ctx)?.toString() ?: ""
-        } catch (e: Exception) {
-            Log.e(TAG, "Error reading system clipboard: ${e.message}")
-            ""
-        }
+        val ctx = context ?: return ""
+        return ClipboardHelper.getText(ctx)
     }
 
     @JavascriptInterface

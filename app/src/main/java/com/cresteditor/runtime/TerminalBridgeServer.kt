@@ -1,7 +1,5 @@
 package com.cresteditor.runtime
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -10,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import com.cresteditor.core.platform.ClipboardHelper
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
@@ -178,12 +177,7 @@ object TerminalBridgeServer {
 
     private fun handleClipboardSet(context: Context, text: String) {
         mainHandler.post {
-            try {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                clipboard?.setPrimaryClip(ClipData.newPlainText("Crest", text))
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to copy to clipboard: ${e.message}")
-            }
+            ClipboardHelper.copyText(context, text, "Crest")
         }
     }
 
@@ -192,10 +186,7 @@ object TerminalBridgeServer {
         var result = ""
         mainHandler.post {
             try {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                result = clipboard?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString() ?: ""
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to read clipboard: ${e.message}")
+                result = ClipboardHelper.getText(context)
             } finally {
                 latch.countDown()
             }

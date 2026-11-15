@@ -6,12 +6,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
-import android.provider.Settings
 import android.view.ViewGroup
-import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import com.cresteditor.core.platform.KeyboardHelper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -120,18 +118,18 @@ fun TerminalScreen(
     fun showKeyboard() {
         currentOnTerminalFocus()
         terminalViewRef?.let { view ->
-            view.requestFocus()
-            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.showSoftInput(view, InputMethodManager.SHOW_FORCED)
+            KeyboardHelper.show(view)
         }
     }
 
     fun hideKeyboard() {
         keyboardController?.hide()
-        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-        val view = terminalViewRef ?: (context as? android.app.Activity)?.currentFocus
-        if (view != null) {
-            imm?.hideSoftInputFromWindow(view.windowToken, 0)
+        terminalViewRef?.let { view ->
+            KeyboardHelper.hide(view)
+        } ?: run {
+            (context as? android.app.Activity)?.currentFocus?.let { view ->
+                KeyboardHelper.hide(view)
+            }
         }
     }
 

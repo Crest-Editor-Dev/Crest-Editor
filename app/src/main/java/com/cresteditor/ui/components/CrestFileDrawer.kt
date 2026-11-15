@@ -1,9 +1,8 @@
 package com.cresteditor.ui.components
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import com.cresteditor.core.platform.ClipboardHelper
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -162,7 +161,6 @@ fun CrestFileDrawer(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val clipboard = remember { context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager }
 
     fun startInlineCreation(isFolder: Boolean, parentPath: String? = null) {
         if (parentPath != null) {
@@ -751,7 +749,7 @@ fun CrestFileDrawer(
                                                         text = "Copy Path",
                                                         onClick = {
                                                             contextMenuItem = null
-                                                            clipboard?.setPrimaryClip(ClipData.newPlainText("path", item.path))
+                                                            ClipboardHelper.copyText(context, item.path, "path")
                                                             Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
                                                         }
                                                     )
@@ -766,7 +764,7 @@ fun CrestFileDrawer(
                                                                     item.name
                                                                 }
                                                             } else item.name
-                                                            clipboard?.setPrimaryClip(ClipData.newPlainText("relative_path", relPath))
+                                                            ClipboardHelper.copyText(context, relPath, "relative_path")
                                                             Toast.makeText(context, "Relative path copied to clipboard", Toast.LENGTH_SHORT).show()
                                                         }
                                                     )
@@ -855,7 +853,7 @@ fun CrestFileDrawer(
                                                 text = "Copy Path",
                                                 onClick = {
                                                     showEmptyAreaMenu = false
-                                                    clipboard?.setPrimaryClip(ClipData.newPlainText("path", workspaceDir?.absolutePath ?: ""))
+                                                    ClipboardHelper.copyText(context, workspaceDir?.absolutePath ?: "", "path")
                                                     Toast.makeText(context, "Workspace path copied to clipboard", Toast.LENGTH_SHORT).show()
                                                 }
                                             )

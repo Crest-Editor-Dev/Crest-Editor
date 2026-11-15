@@ -36,39 +36,12 @@ class MainViewModel : ViewModel() {
     private val _showSettings = MutableStateFlow(false)
     val showSettings: StateFlow<Boolean> = _showSettings.asStateFlow()
 
-    // Dialog states
-    private val _showCreateDialog = MutableStateFlow(false)
-    val showCreateDialog: StateFlow<Boolean> = _showCreateDialog.asStateFlow()
-
-    private val _createParentDir = MutableStateFlow<File?>(null)
-    val createParentDir: StateFlow<File?> = _createParentDir.asStateFlow()
-
-    private val _showRenameDialog = MutableStateFlow(false)
-    val showRenameDialog: StateFlow<Boolean> = _showRenameDialog.asStateFlow()
-
-    private val _renameTargetItem = MutableStateFlow<FileTreeItem?>(null)
-    val renameTargetItem: StateFlow<FileTreeItem?> = _renameTargetItem.asStateFlow()
-
-    private val _renameInput = MutableStateFlow("")
-    val renameInput: StateFlow<String> = _renameInput.asStateFlow()
-
-    private val _renameValidationError = MutableStateFlow<String?>(null)
-    val renameValidationError: StateFlow<String?> = _renameValidationError.asStateFlow()
-
+    // Delete dialog states
     private val _showDeleteDialog = MutableStateFlow(false)
     val showDeleteDialog: StateFlow<Boolean> = _showDeleteDialog.asStateFlow()
 
     private val _deleteTargetItem = MutableStateFlow<FileTreeItem?>(null)
     val deleteTargetItem: StateFlow<FileTreeItem?> = _deleteTargetItem.asStateFlow()
-
-    private val _isFolderCreation = MutableStateFlow(false)
-    val isFolderCreation: StateFlow<Boolean> = _isFolderCreation.asStateFlow()
-
-    private val _newNameInput = MutableStateFlow("")
-    val newNameInput: StateFlow<String> = _newNameInput.asStateFlow()
-
-    private val _validationError = MutableStateFlow<String?>(null)
-    val validationError: StateFlow<String?> = _validationError.asStateFlow()
 
     private val _toastMessage = MutableStateFlow<String?>(null)
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
@@ -292,57 +265,6 @@ class MainViewModel : ViewModel() {
         _showSettings.value = show
     }
 
-    fun openCreateDialog(isFolder: Boolean, parentDir: File? = null) {
-        _isFolderCreation.value = isFolder
-        _createParentDir.value = parentDir
-        _newNameInput.value = ""
-        _validationError.value = null
-        _showCreateDialog.value = true
-    }
-
-    fun closeCreateDialog() {
-        _showCreateDialog.value = false
-        _createParentDir.value = null
-        _newNameInput.value = ""
-        _validationError.value = null
-    }
-
-    fun updateNewNameInput(context: Context, name: String) {
-        _newNameInput.value = name
-        val targetDir = _createParentDir.value ?: WorkspaceManager.getWorkspaceDir(context)
-        _validationError.value = WorkspaceManager.validateName(targetDir, name)
-    }
-
-    fun createNewItem(context: Context, webView: WebView?) {
-        viewModelScope.launch {
-            val targetDir = _createParentDir.value ?: WorkspaceManager.getWorkspaceDir(context)
-            val name = _newNameInput.value
-            val err = WorkspaceManager.validateName(targetDir, name)
-
-            if (err != null) {
-                _validationError.value = err
-                return@launch
-            }
-
-            val isFolder = _isFolderCreation.value
-            val result = if (isFolder) {
-                WorkspaceManager.createNewFolder(targetDir, name)
-            } else {
-                WorkspaceManager.createNewFile(targetDir, name)
-            }
-
-            result.onSuccess { createdFile ->
-                closeCreateDialog()
-                refreshWorkspace(context)
-                if (!createdFile.isDirectory) {
-                    openFile(createdFile, webView)
-                }
-            }.onFailure { ex ->
-                _validationError.value = ex.message ?: "Creation failed."
-            }
-        }
-    }
-
     fun createNewItemDirect(parentDir: File?, name: String, isFolder: Boolean, webView: WebView?, context: Context) {
         viewModelScope.launch {
             val targetDir = parentDir ?: WorkspaceManager.getWorkspaceDir(context)
@@ -410,110 +332,6 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    fun openRenameDialog(item: FileTreeItem) {
-        _renameTargetItem.value = item
-        _renameInput.value = item.name
-        _renameValidationError.value = null
-        _showRenameDialog.value = true
-    }
-
-    fun closeRenameDialog() {
-        _showRenameDialog.value = false
-        _renameTargetItem.value = null
-        _renameInput.value = ""
-        _renameValidationError.value = null
-    }
-
-    fun updateRenameInput(newName: String) {
-        _renameInput.value = newName
-        val target = _renameTargetItem.value ?: return
-        val parent = File(target.path).parentFile ?: return
-        if (newName.trim() == target.name) {
-            _renameValidationError.value = null
-        } else {
-            _renameValidationError.value = WorkspaceManager.validateName(parent, newName)
-        }
-    }
-
-    fun executeRename(context: Context, webView: WebView?) {
-        val target = _renameTargetItem.value ?: return
-        val newName = _renameInput.value.trim()
-        val oldFile = File(target.path)
-        val parent = oldFile.parentFile ?: return
-
-        if (newName == target.name) {
-            closeRenameDialog()
-            return
-        }
-
-        val err = WorkspaceManager.validateName(parent, newName)
-        if (err != null) {
-            _renameValidationError.value = err
-            return
-        }
-
-        viewModelScope.launch {
-            val result = WorkspaceManager.renameFile(oldFile, newName)
-            result.onSuccess { newFile ->
-                val oldPath = oldFile.absolutePath
-                val newPath = newFile.absolutePath
-                val newLanguage = WorkspaceManager.detectLanguage(newFile.name)
-
-                // Update caches if tracked
-                if (lastSavedContentHashes.containsKey(oldPath)) {
-                    val hash = lastSavedContentHashes.remove(oldPath)
-                    if (hash != null) lastSavedContentHashes[newPath] = hash
-                }
-                if (lastSavedTimestamps.containsKey(oldPath)) {
-                    lastSavedTimestamps.remove(oldPath)
-                    lastSavedTimestamps[newPath] = newFile.lastModified()
-                }
-
-                if (oldFile.isDirectory) {
-                    val oldPrefix = oldFile.absolutePath + File.separator
-                    val newPrefix = newFile.absolutePath + File.separator
-                    _openTabs.value = _openTabs.value.map { tab ->
-                        if (tab.id.startsWith(oldPrefix)) {
-                            val rel = tab.id.removePrefix(oldPrefix)
-                            val newChildPath = newPrefix + rel
-                            val childLang = WorkspaceManager.detectLanguage(tab.title)
-                            MonacoBridge.renameModel(webView, tab.id, newChildPath, childLang)
-                            tab.copy(id = newChildPath)
-                        } else {
-                            tab
-                        }
-                    }
-                    if (_activeTabId.value.startsWith(oldPrefix)) {
-                        _activeTabId.value = newPrefix + _activeTabId.value.removePrefix(oldPrefix)
-                    }
-                } else {
-                    // Update open tabs
-                    _openTabs.value = _openTabs.value.map { tab ->
-                        if (tab.id == oldPath) {
-                            tab.copy(id = newPath, title = newFile.name, isOrphaned = false)
-                        } else {
-                            tab
-                        }
-                    }
-
-                    // Update active tab if it was the renamed file
-                    if (_activeTabId.value == oldPath) {
-                        _activeTabId.value = newPath
-                        _activeLanguage.value = newLanguage
-                    }
-
-                    // Update Monaco Editor Model URI & Content
-                    MonacoBridge.renameModel(webView, oldPath, newPath, newLanguage)
-                }
-
-                closeRenameDialog()
-                refreshWorkspace(context)
-            }.onFailure { ex ->
-                _renameValidationError.value = ex.message ?: "Rename failed."
-            }
-        }
-    }
-
     fun renameItemDirect(target: FileTreeItem, newName: String, webView: WebView?, context: Context) {
         val trimmed = newName.trim()
         val oldFile = File(target.path)
@@ -530,61 +348,67 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch {
             val result = WorkspaceManager.renameFile(oldFile, trimmed)
             result.onSuccess { newFile ->
-                val oldPath = oldFile.absolutePath
-                val newPath = newFile.absolutePath
-                val newLanguage = WorkspaceManager.detectLanguage(newFile.name)
-
-                // Update caches if tracked
-                if (lastSavedContentHashes.containsKey(oldPath)) {
-                    val hash = lastSavedContentHashes.remove(oldPath)
-                    if (hash != null) lastSavedContentHashes[newPath] = hash
-                }
-                if (lastSavedTimestamps.containsKey(oldPath)) {
-                    lastSavedTimestamps.remove(oldPath)
-                    lastSavedTimestamps[newPath] = newFile.lastModified()
-                }
-
-                if (oldFile.isDirectory) {
-                    val oldPrefix = oldFile.absolutePath + File.separator
-                    val newPrefix = newFile.absolutePath + File.separator
-                    _openTabs.value = _openTabs.value.map { tab ->
-                        if (tab.id.startsWith(oldPrefix)) {
-                            val rel = tab.id.removePrefix(oldPrefix)
-                            val newChildPath = newPrefix + rel
-                            val childLang = WorkspaceManager.detectLanguage(tab.title)
-                            MonacoBridge.renameModel(webView, tab.id, newChildPath, childLang)
-                            tab.copy(id = newChildPath)
-                        } else {
-                            tab
-                        }
-                    }
-                    if (_activeTabId.value.startsWith(oldPrefix)) {
-                        _activeTabId.value = newPrefix + _activeTabId.value.removePrefix(oldPrefix)
-                    }
-                } else {
-                    // Update open tabs
-                    _openTabs.value = _openTabs.value.map { tab ->
-                        if (tab.id == oldPath) {
-                            tab.copy(id = newPath, title = newFile.name, isOrphaned = false)
-                        } else {
-                            tab
-                        }
-                    }
-
-                    // Update active tab if it was the renamed file
-                    if (_activeTabId.value == oldPath) {
-                        _activeTabId.value = newPath
-                        _activeLanguage.value = newLanguage
-                    }
-
-                    // Update Monaco Editor Model URI & Content
-                    MonacoBridge.renameModel(webView, oldPath, newPath, newLanguage)
-                }
-
+                applyItemRenamed(oldFile, newFile, webView)
                 refreshWorkspace(context)
             }.onFailure { ex ->
                 _toastMessage.value = ex.message ?: "Rename failed."
             }
+        }
+    }
+
+    /**
+     * Synchronizes tabs, caches, and Monaco models when a file or directory is renamed.
+     */
+    private fun applyItemRenamed(oldFile: File, newFile: File, webView: WebView?) {
+        val oldPath = oldFile.absolutePath
+        val newPath = newFile.absolutePath
+        val newLanguage = WorkspaceManager.detectLanguage(newFile.name)
+
+        // Update caches if tracked
+        if (lastSavedContentHashes.containsKey(oldPath)) {
+            val hash = lastSavedContentHashes.remove(oldPath)
+            if (hash != null) lastSavedContentHashes[newPath] = hash
+        }
+        if (lastSavedTimestamps.containsKey(oldPath)) {
+            lastSavedTimestamps.remove(oldPath)
+            lastSavedTimestamps[newPath] = newFile.lastModified()
+        }
+
+        if (oldFile.isDirectory) {
+            val oldPrefix = oldFile.absolutePath + File.separator
+            val newPrefix = newFile.absolutePath + File.separator
+            _openTabs.value = _openTabs.value.map { tab ->
+                if (tab.id.startsWith(oldPrefix)) {
+                    val rel = tab.id.removePrefix(oldPrefix)
+                    val newChildPath = newPrefix + rel
+                    val childLang = WorkspaceManager.detectLanguage(tab.title)
+                    MonacoBridge.renameModel(webView, tab.id, newChildPath, childLang)
+                    tab.copy(id = newChildPath)
+                } else {
+                    tab
+                }
+            }
+            if (_activeTabId.value.startsWith(oldPrefix)) {
+                _activeTabId.value = newPrefix + _activeTabId.value.removePrefix(oldPrefix)
+            }
+        } else {
+            // Update open tabs
+            _openTabs.value = _openTabs.value.map { tab ->
+                if (tab.id == oldPath) {
+                    tab.copy(id = newPath, title = newFile.name, isOrphaned = false)
+                } else {
+                    tab
+                }
+            }
+
+            // Update active tab if it was the renamed file
+            if (_activeTabId.value == oldPath) {
+                _activeTabId.value = newPath
+                _activeLanguage.value = newLanguage
+            }
+
+            // Update Monaco Editor Model URI & Content
+            MonacoBridge.renameModel(webView, oldPath, newPath, newLanguage)
         }
     }
 }

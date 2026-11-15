@@ -1,11 +1,11 @@
 package com.cresteditor.runtime
 
-import android.content.ClipboardManager
 import android.content.Context
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.inputmethod.InputMethodManager
+import com.cresteditor.core.platform.ClipboardHelper
+import com.cresteditor.core.platform.KeyboardHelper
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -38,30 +38,18 @@ open class NativeTerminalClient(
     }
 
     override fun onCopyTextToClipboard(session: TerminalSession, text: String) {
-        try {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            val clip = android.content.ClipData.newPlainText("Terminal", text)
-            clipboard?.setPrimaryClip(clip)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to copy text to clipboard", e)
-        }
+        ClipboardHelper.copyText(context, text, "Terminal")
     }
 
     override fun onPasteTextFromClipboard(session: TerminalSession?) {
-        try {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            val clipData = clipboard?.primaryClip
-            if (clipData != null && clipData.itemCount > 0) {
-                val pasteText = clipData.getItemAt(0).coerceToText(context).toString()
-                val emulator = session?.emulator
-                if (emulator != null) {
-                    emulator.paste(pasteText)
-                } else {
-                    session?.write(pasteText)
-                }
+        val pasteText = ClipboardHelper.getText(context)
+        if (pasteText.isNotEmpty()) {
+            val emulator = session?.emulator
+            if (emulator != null) {
+                emulator.paste(pasteText)
+            } else {
+                session?.write(pasteText)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to paste text from clipboard", e)
         }
     }
 
@@ -96,9 +84,7 @@ open class NativeTerminalClient(
 
     override fun onSingleTapUp(e: MotionEvent) {
         terminalView?.let { view ->
-            view.requestFocus()
-            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+            KeyboardHelper.show(view)
         }
     }
 

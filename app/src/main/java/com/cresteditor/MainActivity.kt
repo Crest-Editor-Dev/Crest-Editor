@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
 import android.util.Log
-import android.view.inputmethod.InputMethodManager
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -38,6 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cresteditor.core.commands.CommandItem
 import com.cresteditor.core.commands.CommandRegistry
 import com.cresteditor.core.permission.StoragePermissionHelper
+import com.cresteditor.core.platform.KeyboardHelper
 import com.cresteditor.core.settings.SettingsManager
 import com.cresteditor.editor.MonacoBridge
 import com.cresteditor.runtime.RootfsManager
@@ -837,17 +837,13 @@ class MainActivity : ComponentActivity() {
                                         TerminalSessionManager.activeClient?.isAltLocked = true
                                     },
                                     onToggleKeyboard = {
-                                        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                                        if (activeFocus == ActiveFocus.TERMINAL) {
-                                            TerminalSessionManager.activeClient?.terminalView?.let { view ->
-                                                view.requestFocus()
-                                                imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                                            }
+                                        val targetView = if (activeFocus == ActiveFocus.TERMINAL) {
+                                            TerminalSessionManager.activeClient?.terminalView
                                         } else {
-                                            webView?.let { wv ->
-                                                wv.requestFocus()
-                                                imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
-                                            }
+                                            webView
+                                        }
+                                        targetView?.let { view ->
+                                            KeyboardHelper.toggle(view)
                                         }
                                     },
                                     onKeyClick = { key ->
