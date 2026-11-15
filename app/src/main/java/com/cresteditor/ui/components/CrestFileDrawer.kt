@@ -61,11 +61,11 @@ fun CrestFileDrawer(
     Row(
         modifier = Modifier
             .fillMaxHeight()
-            .width(310.dp)
+            .width(320.dp)
             .background(DrawerTheme.SideBarBg)
     ) {
         // =====================================================================
-        // 1. ACTIVITY BAR (48dp Width - Exact VS Code Left Dock)
+        // 1. ACTIVITY BAR (56dp Width - Mobile Touch Friendly Left Dock)
         // =====================================================================
         ActivityBar(
             activeView = activeView,
