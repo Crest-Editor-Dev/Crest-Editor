@@ -613,9 +613,10 @@ class MainActivity : ComponentActivity() {
 
                 var activeFocus by remember { mutableStateOf(ActiveFocus.NONE) }
 
-                ModalNavigationDrawer(
-                    drawerState = drawerState,
-                    gesturesEnabled = drawerState.isOpen,
+                Box(modifier = Modifier.fillMaxSize()) {
+                    ModalNavigationDrawer(
+                        drawerState = drawerState,
+                        gesturesEnabled = drawerState.isOpen,
                     drawerContent = {
                         ModalDrawerSheet(
                             drawerContainerColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -741,17 +742,7 @@ class MainActivity : ComponentActivity() {
                                                 onEditorFocus = { activeFocus = ActiveFocus.MONACO }
                                             )
 
-                                            if (!showTerminal && showSettings) {
-                                                SettingsScreen(
-                                                    settingsManager = settingsManager,
-                                                    onClose = {
-                                                        viewModel.setShowSettings(false)
-                                                    },
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            }
-
-                                if (!showTerminal && !showSettings && openTabs.isEmpty()) {
+                                            if (!showTerminal && openTabs.isEmpty()) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
@@ -892,6 +883,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                if (showSettings) {
+                    SettingsScreen(
+                        settingsManager = settingsManager,
+                        onClose = {
+                            viewModel.setShowSettings(false)
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
                 if (showCommandPalette) {
                     VSCodeCommandPalette(
                         initialQuery = commandPaletteInitialQuery,
@@ -938,6 +939,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     )
+                }
                 }
             }
         }

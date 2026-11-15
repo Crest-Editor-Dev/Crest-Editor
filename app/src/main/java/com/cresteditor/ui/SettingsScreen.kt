@@ -115,97 +115,105 @@ fun SettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .background(VSCodeBg)
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         // ---------------------------------------------------------------------
         // 1. VS Code Settings Header
         // ---------------------------------------------------------------------
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(VSCodeHeaderBg)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .statusBarsPadding()
         ) {
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier.size(32.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Back to Editor",
-                    tint = VSCodeForeground,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            Text(
-                text = "Settings",
-                color = VSCodeHeaderForeground,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Open Settings (JSON) button - iconic VS Code "{}" file icon
-            IconButton(
-                onClick = { isJsonMode = true },
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Code,
-                    contentDescription = "Open Settings (JSON)",
-                    tint = VSCodeForeground,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // More Actions (...)
-            Box {
                 IconButton(
-                    onClick = { showTopMenu = true },
+                    onClick = onClose,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More Actions",
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Back to Editor",
                         tint = VSCodeForeground,
                         modifier = Modifier.size(18.dp)
                     )
                 }
 
-                DropdownMenu(
-                    expanded = showTopMenu,
-                    onDismissRequest = { showTopMenu = false },
-                    modifier = Modifier.background(VSCodeHeaderBg)
+                Spacer(modifier = Modifier.width(6.dp))
+
+                Text(
+                    text = "Settings",
+                    color = VSCodeHeaderForeground,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Open Settings (JSON) button - iconic VS Code "{}" file icon
+                IconButton(
+                    onClick = { isJsonMode = true },
+                    modifier = Modifier.size(32.dp)
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("Open Settings (JSON)", color = VSCodeForeground, fontSize = 13.sp) },
-                        leadingIcon = { Icon(Icons.Default.Code, null, tint = VSCodeForeground, modifier = Modifier.size(16.dp)) },
-                        onClick = {
-                            showTopMenu = false
-                            isJsonMode = true
-                        }
+                    Icon(
+                        imageVector = Icons.Default.Code,
+                        contentDescription = "Open Settings (JSON)",
+                        tint = VSCodeForeground,
+                        modifier = Modifier.size(18.dp)
                     )
-                    DropdownMenuItem(
-                        text = { Text("Show Modified Only (@modified)", color = VSCodeForeground, fontSize = 13.sp) },
-                        leadingIcon = { Icon(Icons.Default.FilterList, null, tint = VSCodeForeground, modifier = Modifier.size(16.dp)) },
-                        onClick = {
-                            showTopMenu = false
-                            searchQuery = "@modified"
-                        }
-                    )
-                    HorizontalDivider(color = VSCodeRowDivider)
-                    DropdownMenuItem(
-                        text = { Text("Reset All Settings", color = VSCodeErrorFg, fontSize = 13.sp) },
-                        leadingIcon = { Icon(Icons.Default.RestartAlt, null, tint = VSCodeErrorFg, modifier = Modifier.size(16.dp)) },
-                        onClick = {
-                            showTopMenu = false
-                            showResetAllConfirm = true
-                        }
-                    )
+                }
+
+                // More Actions (...)
+                Box {
+                    IconButton(
+                        onClick = { showTopMenu = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More Actions",
+                            tint = VSCodeForeground,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showTopMenu,
+                        onDismissRequest = { showTopMenu = false },
+                        modifier = Modifier.background(VSCodeHeaderBg)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Open Settings (JSON)", color = VSCodeForeground, fontSize = 13.sp) },
+                            leadingIcon = { Icon(Icons.Default.Code, null, tint = VSCodeForeground, modifier = Modifier.size(16.dp)) },
+                            onClick = {
+                                showTopMenu = false
+                                isJsonMode = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Show Modified Only (@modified)", color = VSCodeForeground, fontSize = 13.sp) },
+                            leadingIcon = { Icon(Icons.Default.FilterList, null, tint = VSCodeForeground, modifier = Modifier.size(16.dp)) },
+                            onClick = {
+                                showTopMenu = false
+                                searchQuery = "@modified"
+                            }
+                        )
+                        HorizontalDivider(color = VSCodeRowDivider)
+                        DropdownMenuItem(
+                            text = { Text("Reset All Settings", color = VSCodeErrorFg, fontSize = 13.sp) },
+                            leadingIcon = { Icon(Icons.Default.RestartAlt, null, tint = VSCodeErrorFg, modifier = Modifier.size(16.dp)) },
+                            onClick = {
+                                showTopMenu = false
+                                showResetAllConfirm = true
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -853,6 +861,8 @@ private fun VSCodeJsonEditorView(
     onCloseJson: () -> Unit,
     onSaveSuccess: () -> Unit
 ) {
+    BackHandler { onCloseJson() }
+
     var rawText by remember { mutableStateOf(settingsManager.getRawJson()) }
     var parseError by remember { mutableStateOf<String?>(null) }
 
@@ -860,15 +870,22 @@ private fun VSCodeJsonEditorView(
         modifier = Modifier
             .fillMaxSize()
             .background(VSCodeBg)
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         // Tab Bar for settings.json
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(VSCodeHeaderBg)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .statusBarsPadding()
         ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
             IconButton(
                 onClick = onCloseJson,
                 modifier = Modifier.size(32.dp)
@@ -933,6 +950,7 @@ private fun VSCodeJsonEditorView(
             ) {
                 Text("Save", color = VSCodeFocusBorder, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
+        }
         }
 
         HorizontalDivider(color = VSCodeRowDivider, thickness = 1.dp)
