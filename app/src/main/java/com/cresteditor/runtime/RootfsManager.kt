@@ -199,9 +199,6 @@ class RootfsManager(private val context: Context) {
         }
     }
 
-    // Backwards-compatibility method alias
-    fun setupAlpineEnvironment(onProgress: (String) -> Unit = {}): Boolean = setupRootfsEnvironment(onProgress)
-
     /**
      * Downloads the RootFS archive with redirect following, .part buffering, and size verification.
      */
@@ -639,9 +636,6 @@ class RootfsManager(private val context: Context) {
         }
     }
 
-    // Backwards-compatibility alias
-    fun fixAlpinePermissionsAndLinks() = fixPermissionsAndLinks()
-
     fun ensureLegacySymlink(target: File = rootfsDir) {
         try {
             val legacyDir = File(filesDir, "alpine")
@@ -793,22 +787,12 @@ class RootfsManager(private val context: Context) {
         )
     }
 
-    // Backwards-compatibility alias
-    fun createAlpineTerminalSession(
-        client: com.termux.terminal.TerminalSessionClient,
-        initialPath: String? = null,
-        preferredShell: String? = null
-    ) = createTerminalSession(client, initialPath, preferredShell)
-
     fun hasBinary(binaryName: String): Boolean {
         if (!isInstalled) return false
         val usrBin = File(rootfsDir, "usr/bin/$binaryName")
         val bin = File(rootfsDir, "bin/$binaryName")
         return usrBin.exists() || bin.exists()
     }
-
-    // Backwards-compatibility alias
-    fun hasAlpineBinary(binaryName: String): Boolean = hasBinary(binaryName)
 
     fun ensureMountPointsExist(sysMounts: List<String> = emptyList()) {
         val baseMounts = listOf("sdcard", "storage", "storage/emulated/0", "mnt", "data", "files", "tmp", "dev", "proc", "sys", "dev/shm", "tmp/shm")
@@ -927,9 +911,6 @@ class RootfsManager(private val context: Context) {
         return pb
     }
 
-    // Backwards-compatibility alias
-    fun createAlpineProcessBuilder(commandInAlpine: List<String>): ProcessBuilder = createProcessBuilder(commandInAlpine)
-
     fun normalizePath(path: String): String {
         return if (path.startsWith("/storage/emulated/0")) {
             path.replace("/storage/emulated/0", "/sdcard")
@@ -937,10 +918,4 @@ class RootfsManager(private val context: Context) {
             path
         }
     }
-
-    // Backwards-compatibility alias
-    fun normalizePathForAlpine(path: String): String = normalizePath(path)
 }
-
-// Global backwards-compatibility typealias
-typealias AlpineManager = RootfsManager
