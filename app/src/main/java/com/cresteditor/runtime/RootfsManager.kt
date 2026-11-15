@@ -811,7 +811,7 @@ class RootfsManager(private val context: Context) {
     fun hasAlpineBinary(binaryName: String): Boolean = hasBinary(binaryName)
 
     fun ensureMountPointsExist(sysMounts: List<String> = emptyList()) {
-        val baseMounts = listOf("sdcard", "storage", "mnt", "data", "files", "tmp", "dev", "proc", "sys", "dev/shm", "tmp/shm")
+        val baseMounts = listOf("sdcard", "storage", "storage/emulated/0", "mnt", "data", "files", "tmp", "dev", "proc", "sys", "dev/shm", "tmp/shm")
         for (m in baseMounts) {
             val d = File(rootfsDir, m)
             if (!d.exists()) {
@@ -876,12 +876,23 @@ class RootfsManager(private val context: Context) {
 
         ensureMountPointsExist(rawSysMounts)
 
+        val storageBindings = mutableListOf<String>()
+        val emulated0 = File("/storage/emulated/0")
+        if (emulated0.exists()) {
+            storageBindings.addAll(listOf("-b", "/storage/emulated/0:/sdcard", "-b", "/storage/emulated/0"))
+        } else {
+            storageBindings.addAll(listOf("-b", "/sdcard"))
+        }
+        val storageDir = File("/storage")
+        if (storageDir.exists()) {
+            storageBindings.addAll(listOf("-b", "/storage"))
+        }
+
         val cmd = mutableListOf<String>()
         cmd.addAll(prootExec)
+        cmd.add("--kill-on-exit")
+        cmd.addAll(storageBindings)
         cmd.addAll(listOf(
-            "--kill-on-exit",
-            "-b", "/sdcard",
-            "-b", "/storage",
             "-b", "/mnt",
             "-b", "/data",
             "-b", filesPath,

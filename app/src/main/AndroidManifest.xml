@@ -4,6 +4,9 @@
     package="com.cresteditor">
 
     <!-- Storage permissions -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
     
     <!-- Network permission & Service permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -17,6 +20,7 @@
 
     <application
         android:allowBackup="true"
+        android:requestLegacyExternalStorage="true"
         android:enableOnBackInvokedCallback="true"
         android:extractNativeLibs="true"
         android:icon="@android:drawable/ic_menu_manage"

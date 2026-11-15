@@ -52,8 +52,15 @@ done
 
 unset system_mnt
 
-ARGS="$ARGS -b /sdcard"
-ARGS="$ARGS -b /storage"
+if [ -d "/storage/emulated/0" ]; then
+  ARGS="$ARGS -b /storage/emulated/0:/sdcard"
+  ARGS="$ARGS -b /storage/emulated/0"
+elif [ -e "/sdcard" ]; then
+  ARGS="$ARGS -b /sdcard"
+fi
+if [ -d "/storage" ]; then
+  ARGS="$ARGS -b /storage"
+fi
 ARGS="$ARGS -b /dev"
 ARGS="$ARGS -b /data"
 ARGS="$ARGS -b /dev/urandom:/dev/random"

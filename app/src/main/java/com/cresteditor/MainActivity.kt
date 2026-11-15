@@ -27,13 +27,17 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cresteditor.core.commands.CommandItem
 import com.cresteditor.core.commands.CommandRegistry
+import com.cresteditor.core.permission.StoragePermissionHelper
 import com.cresteditor.core.settings.SettingsManager
 import com.cresteditor.editor.MonacoBridge
 import com.cresteditor.runtime.RootfsManager
@@ -42,6 +46,7 @@ import com.cresteditor.ui.MainViewModel
 import com.cresteditor.ui.TerminalScreen
 import com.cresteditor.ui.SettingsScreen
 import com.cresteditor.ui.components.*
+import com.cresteditor.ui.components.StoragePermissionDialog
 import com.cresteditor.ui.components.VSCodeCommandPalette
 import com.cresteditor.ui.theme.*
 import com.cresteditor.workspace.WorkspaceManager
@@ -112,6 +117,34 @@ class MainActivity : ComponentActivity() {
                 var commandPaletteInitialQuery by remember { mutableStateOf(">") }
                 var currentLineCount by remember { mutableStateOf(1) }
                 val commandRegistry = remember { CommandRegistry() }
+
+                val lifecycleOwner = LocalLifecycleOwner.current
+                var hasStoragePermission by remember {
+                    mutableStateOf(StoragePermissionHelper.hasStoragePermission(context))
+                }
+                var showStoragePermissionDialog by remember {
+                    mutableStateOf(!hasStoragePermission)
+                }
+
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) {
+                            val granted = StoragePermissionHelper.hasStoragePermission(context)
+                            val wasGranted = hasStoragePermission
+                            hasStoragePermission = granted
+                            if (granted) {
+                                showStoragePermissionDialog = false
+                                if (!wasGranted) {
+                                    viewModel.refreshWorkspace(this@MainActivity)
+                                }
+                            }
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose {
+                        lifecycleOwner.lifecycle.removeObserver(observer)
+                    }
+                }
 
                 LaunchedEffect(showTerminal) {
                     if (!showTerminal) {
@@ -937,6 +970,17 @@ class MainActivity : ComponentActivity() {
                                     viewModel.refreshWorkspace(this@MainActivity)
                                 }
                             }
+                        }
+                    )
+                }
+
+                if (showStoragePermissionDialog && !hasStoragePermission) {
+                    StoragePermissionDialog(
+                        onDismissRequest = {
+                            showStoragePermissionDialog = false
+                        },
+                        onGrantPermission = {
+                            StoragePermissionHelper.requestStoragePermission(context)
                         }
                     )
                 }
