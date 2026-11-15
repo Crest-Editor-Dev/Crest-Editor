@@ -2,6 +2,7 @@ package com.cresteditor.ui.components
 
 import android.content.Context
 import android.widget.Toast
+import com.cresteditor.core.model.FileTypeRegistry
 import com.cresteditor.core.platform.ClipboardHelper
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -81,17 +82,6 @@ private val VSCodeInputBg = Color(0xFF313131)
 private val VSCodeInputBorder = Color(0xFF3C3C3C)
 private val VSCodeFocusBorder = Color(0xFF007ACC)
 private val VSCodeTreeIndentGuideActive = Color(0xFF6E6E6E) // tree.indentGuidesStroke (#585858 / #6E6E6E)
-
-// File Extension Icon Colors
-private val ColorFolder = Color(0xFFDCDCAA)
-private val ColorKotlin = Color(0xFFFFA657)
-private val ColorJavaScript = Color(0xFFF7DF1E)
-private val ColorTypeScript = Color(0xFF3178C6)
-private val ColorJson = Color(0xFFCBCB41)
-private val ColorHtml = Color(0xFFE34C26)
-private val ColorCss = Color(0xFF388BFD)
-private val ColorMarkdown = Color(0xFF519ABA)
-private val ColorXml = Color(0xFF4EC9B0)
 
 enum class SideBarView {
     EXPLORER,
@@ -1166,21 +1156,7 @@ private fun ActivityBarItem(
 /**
  * Helper to get extension-based file icons and colors (Seti theme style).
  */
-internal fun getFileIcon(filename: String): Pair<ImageVector, Color> {
-    val ext = filename.substringAfterLast('.', "").lowercase()
-    return when (ext) {
-        "kt", "kts" -> Pair(Icons.Default.Code, ColorKotlin)
-        "js", "jsx", "mjs" -> Pair(Icons.Default.Javascript, ColorJavaScript)
-        "ts", "tsx" -> Pair(Icons.Default.Code, ColorTypeScript)
-        "json" -> Pair(Icons.Default.DataObject, ColorJson)
-        "html", "htm" -> Pair(Icons.Default.Html, ColorHtml)
-        "css", "scss", "less" -> Pair(Icons.Default.Css, ColorCss)
-        "md", "markdown" -> Pair(Icons.Default.Description, ColorMarkdown)
-        "xml" -> Pair(Icons.Default.Code, ColorXml)
-        "sh", "bash" -> Pair(Icons.Default.Terminal, ColorKotlin)
-        else -> Pair(Icons.Default.InsertDriveFile, VSCodeTextPrimary)
-    }
-}
+internal fun getFileIcon(filename: String): Pair<ImageVector, Color> = FileTypeRegistry.getFileIcon(filename)
 
 /**
  * Exact VS Code In-Place Tree Row for File / Folder Creation and Rename.

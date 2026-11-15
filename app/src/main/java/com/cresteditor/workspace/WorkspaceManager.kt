@@ -1,6 +1,7 @@
 package com.cresteditor.workspace
 
 import android.content.Context
+import com.cresteditor.core.model.FileTypeRegistry
 import com.cresteditor.ui.components.FileTreeItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -100,24 +101,7 @@ h1 {
         return result
     }
 
-    fun detectLanguage(filename: String): String {
-        val ext = filename.substringAfterLast('.', "").lowercase()
-        return when (ext) {
-            "js", "jsx", "mjs", "cjs" -> "javascript"
-            "ts", "tsx" -> "typescript"
-            "html", "htm" -> "html"
-            "css" -> "css"
-            "json" -> "json"
-            "md", "markdown" -> "markdown"
-            "py" -> "python"
-            "kt", "kts" -> "kotlin"
-            "java" -> "java"
-            "xml" -> "xml"
-            "sql" -> "sql"
-            "sh", "bash" -> "shell"
-            else -> "plaintext"
-        }
-    }
+    fun detectLanguage(filename: String): String = FileTypeRegistry.detectLanguage(filename)
 
     fun validateName(parentDir: File, name: String): String? {
         val trimmed = name.trim()
