@@ -606,41 +606,15 @@ class MainActivity : ComponentActivity() {
                 // Delete Confirmation Dialog
                 if (showDeleteDialog && deleteTargetItem != null) {
                     val isDir = deleteTargetItem!!.isDirectory
-                    AlertDialog(
-                        onDismissRequest = {
-                            viewModel.closeDeleteDialog()
-                        },
-                        title = {
-                            Text(
-                                text = if (isDir) "Delete Folder" else "Delete File",
-                                color = CrestTextActive
-                            )
-                        },
-                        text = {
-                            Text(
-                                text = "Are you sure you want to delete '${deleteTargetItem!!.name}'? This cannot be undone.",
-                                color = CrestTextSecondary
-                            )
-                        },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    viewModel.confirmDelete(context, webView)
-                                }
-                            ) {
-                                Text("Delete", color = androidx.compose.ui.graphics.Color(0xFFF14C4C))
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(
-                                onClick = {
-                                    viewModel.closeDeleteDialog()
-                                }
-                            ) {
-                                Text("Cancel", color = CrestTextSecondary)
-                            }
-                        },
-                        containerColor = CrestSurfaceHeader
+                    VSCodeDialog(
+                        title = if (isDir) "Delete Folder" else "Delete File",
+                        message = "Are you sure you want to delete '${deleteTargetItem!!.name}'? This cannot be undone.",
+                        confirmButtonText = "Delete",
+                        dismissButtonText = "Cancel",
+                        isDestructive = true,
+                        onConfirm = { viewModel.confirmDelete(context, webView) },
+                        onDismiss = { viewModel.closeDeleteDialog() },
+                        onDismissRequest = { viewModel.closeDeleteDialog() }
                     )
                 }
 

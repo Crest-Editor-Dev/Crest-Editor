@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import com.cresteditor.ui.components.VSCodeDialog
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -477,34 +478,19 @@ fun SettingsScreen(
     // Reset All Confirmation Dialog
     // -------------------------------------------------------------------------
     if (showResetAllConfirm) {
-        AlertDialog(
-            onDismissRequest = { showResetAllConfirm = false },
-            title = { Text("Reset all settings?", color = VSCodeHeaderForeground, fontSize = 15.sp) },
-            text = {
-                Text(
-                    "This will restore all configuration in settings.json to their default values.",
-                    color = VSCodeDescription,
-                    fontSize = 13.sp
-                )
+        VSCodeDialog(
+            title = "Reset all settings?",
+            message = "This will restore all configuration in settings.json to their default values.",
+            confirmButtonText = "Reset All",
+            dismissButtonText = "Cancel",
+            isDestructive = true,
+            onConfirm = {
+                settingsManager.resetAll()
+                showResetAllConfirm = false
+                Toast.makeText(context, "All settings restored to defaults", Toast.LENGTH_SHORT).show()
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        settingsManager.resetAll()
-                        showResetAllConfirm = false
-                        Toast.makeText(context, "All settings restored to defaults", Toast.LENGTH_SHORT).show()
-                    }
-                ) {
-                    Text("Reset All", color = VSCodeErrorFg, fontSize = 13.sp)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResetAllConfirm = false }) {
-                    Text("Cancel", color = VSCodeForeground, fontSize = 13.sp)
-                }
-            },
-            containerColor = VSCodeHeaderBg,
-            shape = RoundedCornerShape(3.dp)
+            onDismiss = { showResetAllConfirm = false },
+            onDismissRequest = { showResetAllConfirm = false }
         )
     }
 }
