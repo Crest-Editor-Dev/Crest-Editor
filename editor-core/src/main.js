@@ -682,6 +682,9 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
 
     if (!startHandle || !endHandle || !floatingToolbar) return;
 
+    startHandle.classList.add('handle-start');
+    endHandle.classList.add('handle-end');
+
     const editorNode = editor.getDomNode();
     let pressTimer = null;
     let startX = 0, startY = 0;
@@ -783,14 +786,39 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
       }
     }
 
+    const HANDLE_SIZE = 18;
+
     function positionForHandle(handle, position, isStart, wrapRect, editorRect) {
       const visible = editor.getScrolledVisiblePosition(position);
       if (!visible) {
         handle.classList.remove('visible');
         return;
       }
-      const x = Math.round(editorRect.left - wrapRect.left + visible.left - 12);
-      const y = Math.round(editorRect.top - wrapRect.top + visible.top + (isStart ? -3 : (visible.height || 18)));
+      const caretX = Math.round(editorRect.left - wrapRect.left + visible.left);
+      const caretY = Math.round(editorRect.top - wrapRect.top + visible.top + (visible.height || 18));
+
+      let x, y;
+      let flipped = false;
+
+      if (isStart) {
+        // Start handle: sharp tip at top-right, curves down-left
+        x = caretX - HANDLE_SIZE;
+        y = caretY;
+        if (x < 2) {
+          x = caretX;
+          flipped = true;
+        }
+      } else {
+        // End handle: sharp tip at top-left, curves down-right
+        x = caretX;
+        y = caretY;
+        if (x + HANDLE_SIZE > wrapRect.width - 2) {
+          x = caretX - HANDLE_SIZE;
+          flipped = true;
+        }
+      }
+
+      handle.classList.toggle('flipped', flipped);
       handle.style.transform = `translate3d(${x}px, ${y}px, 0)`;
       handle.classList.add('visible');
     }
@@ -1136,7 +1164,8 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
       function processDrag() {
         pendingDragRaf = null;
         if (!activeDrag) return;
-        const target = editor.getTargetAtClientPoint(latestX, latestY);
+        const fingerOffsetY = 20;
+        const target = editor.getTargetAtClientPoint(latestX, latestY - fingerOffsetY);
         if (!target || !target.position) return;
         const moving = target.position;
         const fixedOffset = model.getOffsetAt(fixedAnchor);

@@ -148,20 +148,20 @@ html, body {
   padding-top: 4px;
 }
 
-/* Touch Selection Handles with 44px Instant-Grip Hit-box */
+/* Touch Selection Handles - Android Native Teardrop / Water Droplet */
 .selection-handle {
   display: none;
   position: absolute;
   top: 0;
   left: 0;
   z-index: 1000;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  outline: none;
   background: var(--accent-blue, #38bdf8);
-  box-shadow: 0 0 0 2px #1e1e1e;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -169,13 +169,32 @@ html, body {
   pointer-events: auto;
 }
 
+/* Left / Start handle: droplet curves down-left, sharp tip points up-right at caret */
+.selection-handle.handle-start {
+  border-radius: 50% 0 50% 50%;
+}
+
+/* Right / End handle: droplet curves down-right, sharp tip points up-left at caret */
+.selection-handle.handle-end {
+  border-radius: 0 50% 50% 50%;
+}
+
+/* Edge-flipping: reverses droplet direction when too close to viewport screen boundaries */
+.selection-handle.handle-start.flipped {
+  border-radius: 0 50% 50% 50%;
+}
+
+.selection-handle.handle-end.flipped {
+  border-radius: 50% 0 50% 50%;
+}
+
 .selection-handle::after {
   content: '';
   position: absolute;
-  top: -10px;
-  left: -10px;
-  right: -10px;
-  bottom: -10px;
+  top: -12px;
+  left: -12px;
+  right: -12px;
+  bottom: -12px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.001);
   pointer-events: auto;
