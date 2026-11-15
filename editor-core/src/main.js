@@ -786,7 +786,7 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
       }
     }
 
-    const HANDLE_SIZE = 18;
+    const HANDLE_SIZE = 24;
 
     function positionForHandle(handle, position, isStart, wrapRect, editorRect) {
       const visible = editor.getScrolledVisiblePosition(position);
