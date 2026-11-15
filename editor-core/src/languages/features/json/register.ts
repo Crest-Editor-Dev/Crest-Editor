@@ -321,7 +321,7 @@ const modeConfigurationDefault: Required<ModeConfiguration> = {
 	completionItems: true,
 	hovers: true,
 	documentSymbols: true,
-	tokens: true,
+	tokens: false,
 	colors: true,
 	foldingRanges: true,
 	diagnostics: true,

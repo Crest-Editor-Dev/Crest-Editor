@@ -143,7 +143,7 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
       // Fast on-demand load: start with active themes and essential core languages
       shikiHighlighter = await createHighlighter({
         themes: [resolvedTheme, resolvedTheme === 'dark-plus' ? 'light-plus' : 'dark-plus'],
-        langs: ['javascript', 'typescript', 'html', 'css', 'json']
+        langs: ['javascript', 'typescript', 'html', 'css', 'json', 'jsonc']
       });
 
       const existingLangs = new Set(monaco.languages.getLanguages().map(l => l.id));
