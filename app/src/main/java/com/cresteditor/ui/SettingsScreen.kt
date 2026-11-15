@@ -9,10 +9,13 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -25,10 +28,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -40,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import com.cresteditor.core.settings.SettingDefinition
 import com.cresteditor.core.settings.SettingType
 import com.cresteditor.core.settings.SettingsManager
+import kotlin.math.abs
 import org.json.JSONObject
 
 // =============================================================================
@@ -80,6 +90,28 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val listState = rememberLazyListState()
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (abs(available.y) > 1f || abs(available.x) > 1f) {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
+    }
+
     BackHandler { onClose() }
 
     // Auto-reload settings from disk when screen is opened
@@ -117,6 +149,13 @@ fun SettingsScreen(
             .background(VSCodeBg)
             .navigationBarsPadding()
             .imePadding()
+            .nestedScroll(nestedScrollConnection)
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = {
+                    focusManager.clearFocus()
+                    keyboardController?.hide()
+                })
+            }
     ) {
         // ---------------------------------------------------------------------
         // 1. VS Code Settings Header
@@ -275,14 +314,21 @@ fun SettingsScreen(
                         ),
                         cursorBrush = SolidColor(VSCodeFocusBorder),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
+                        keyboardActions = KeyboardActions(onSearch = {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                        })
                     )
                 }
 
                 // Clear button
                 if (searchQuery.isNotEmpty()) {
                     IconButton(
-                        onClick = { searchQuery = "" },
+                        onClick = {
+                            searchQuery = ""
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                        },
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
@@ -318,6 +364,8 @@ fun SettingsScreen(
                             onClick = {
                                 showSearchFilterMenu = false
                                 searchQuery = if (searchQuery.contains("@modified")) "" else "@modified"
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
                             }
                         )
                         DropdownMenuItem(
@@ -325,6 +373,8 @@ fun SettingsScreen(
                             onClick = {
                                 showSearchFilterMenu = false
                                 searchQuery = ""
+                                focusManager.clearFocus()
+                                keyboardController?.hide()
                             }
                         )
                     }
@@ -360,7 +410,13 @@ fun SettingsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(24.dp),
+                    .padding(24.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { _, _ ->
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -374,6 +430,7 @@ fun SettingsScreen(
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize()
             ) {
                 groupedSettings.forEach { (category, settingsList) ->

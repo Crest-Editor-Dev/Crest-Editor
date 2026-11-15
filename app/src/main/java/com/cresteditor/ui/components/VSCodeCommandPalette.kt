@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -130,6 +131,13 @@ fun VSCodeCommandPalette(
 
     var selectedIndex by remember(entries) { mutableStateOf(0) }
     val listState = rememberLazyListState()
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            keyboardController?.hide()
+        }
+    }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
