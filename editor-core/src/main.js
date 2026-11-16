@@ -70,6 +70,7 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
   let isContentDirty = false;
   let isExternalSyncing = false;
   let shikiHighlighter = null;
+  let shikiInitPromise = null;
   const loadedShikiLanguages = new Set();
 
   function resolveTheme(themeName) {
@@ -100,11 +101,13 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
   }
 
   async function ensureLanguageLoaded(langId) {
-    if (!langId || !shikiHighlighter) return;
+    if (!langId || langId === 'plaintext') return;
+    if (shikiInitPromise) await shikiInitPromise;
+    if (!shikiHighlighter) return;
     if (loadedShikiLanguages.has(langId)) return;
 
     try {
-      console.log('[Crest Shiki] Dynamically loading language grammar:', langId);
+      console.log('[Crest Shiki] Dynamically loading language grammar on-demand:', langId);
       await shikiHighlighter.loadLanguage(langId);
       loadedShikiLanguages.add(langId);
 
@@ -134,60 +137,59 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
     }
   }
 
-  async function initShiki() {
-    try {
-      console.log('[Crest Shiki] Initializing TextMate syntax engine...');
-      const desiredTheme = currentSettings['editor.theme'] || 'vs-dark';
-      const resolvedTheme = resolveTheme(desiredTheme);
+  function initShiki() {
+    if (shikiInitPromise) return shikiInitPromise;
 
-      // Pre-load essential languages with pure VS Code TextMate grammars
-      shikiHighlighter = await createHighlighter({
-        themes: [resolvedTheme, resolvedTheme === 'dark-plus' ? 'light-plus' : 'dark-plus'],
-        langs: [
-          'javascript', 'typescript', 'jsx', 'tsx',
-          'html', 'css', 'scss', 'less',
-          'json', 'jsonc', 'yaml', 'markdown',
-          'python', 'c', 'cpp', 'csharp',
-          'rust', 'go', 'java', 'kotlin',
-          'shell', 'toml', 'sql', 'xml',
-          'ini', 'dockerfile', 'php', 'ruby',
-          'swift', 'dart'
-        ]
-      });
-
-      const existingLangs = new Set(monaco.languages.getLanguages().map(l => l.id));
-      for (const lang of shikiHighlighter.getLoadedLanguages()) {
-        loadedShikiLanguages.add(lang);
-        if (!existingLangs.has(lang)) {
-          monaco.languages.register({ id: lang });
-          existingLangs.add(lang);
-        }
-      }
-
-      shikiToMonaco(shikiHighlighter, monaco);
-
-      // Fix HTML bracket colorization: remove < and > as bracket pairs so <!DOCTYPE> and tags never show unexpected bracket errors (matching official VS Code behavior)
+    shikiInitPromise = (async function() {
       try {
-        monaco.languages.setLanguageConfiguration('html', {
-          brackets: [
-            ['<!--', '-->'],
-            ['{', '}'],
-            ['(', ')']
-          ],
-          colorizedBracketPairs: []
+        console.log('[Crest Shiki] Initializing TextMate syntax engine (VS Code Pure On-Demand)...');
+        const desiredTheme = currentSettings['editor.theme'] || 'vs-dark';
+        const resolvedTheme = resolveTheme(desiredTheme);
+
+        // Instant startup: Zero pre-loaded grammars, exactly like desktop VS Code!
+        shikiHighlighter = await createHighlighter({
+          themes: [resolvedTheme, resolvedTheme === 'dark-plus' ? 'light-plus' : 'dark-plus'],
+          langs: []
         });
-      } catch (_) {}
 
-      applyShikiTheme(desiredTheme);
+        shikiToMonaco(shikiHighlighter, monaco);
 
-      if (footerStatusText) {
-        footerStatusText.textContent = 'Crest Mobile • TextMate Active';
+        // Fix HTML bracket colorization: remove < and > as bracket pairs so <!DOCTYPE> and tags never show unexpected bracket errors (matching official VS Code behavior)
+        try {
+          monaco.languages.setLanguageConfiguration('html', {
+            brackets: [
+              ['<!--', '-->'],
+              ['{', '}'],
+              ['(', ')']
+            ],
+            colorizedBracketPairs: []
+          });
+        } catch (_) {}
+
+        applyShikiTheme(desiredTheme);
+
+        if (footerStatusText) {
+          footerStatusText.textContent = 'Crest Mobile • TextMate Active';
+        }
+
+        console.log('[Crest Shiki] TextMate engine successfully initialized (instant startup mode)!');
+
+        // If a model is already opened in editor, immediately load its language grammar!
+        if (editor) {
+          const activeModel = editor.getModel();
+          if (activeModel) {
+            const currentLang = activeModel.getLanguageId();
+            if (currentLang && currentLang !== 'plaintext') {
+              ensureLanguageLoaded(currentLang).catch(console.error);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[Crest Shiki] Failed to initialize TextMate engine:', err);
       }
+    })();
 
-      console.log('[Crest Shiki] TextMate engine successfully initialized (fast on-demand mode)!');
-    } catch (err) {
-      console.error('[Crest Shiki] Failed to initialize TextMate engine, fallback to Monaco Monarch:', err);
-    }
+    return shikiInitPromise;
   }
 
   // Settings & VS Code-style AutoSave Engine
