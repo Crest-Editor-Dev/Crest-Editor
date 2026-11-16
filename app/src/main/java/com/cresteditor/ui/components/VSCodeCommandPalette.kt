@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
@@ -49,6 +50,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.cresteditor.core.commands.*
+import com.cresteditor.core.filesystem.GlobMatcher
+import com.cresteditor.core.settings.SettingsManager
 
 private val VSCodeQuickInputBg = Color(0xFF252526)
 private val VSCodeQuickInputBorder = Color(0xFF3C3C3C)
@@ -80,12 +83,21 @@ fun VSCodeCommandPalette(
     openTabs: List<CrestTabItem> = emptyList(),
     activeTabId: String = "",
     currentLineCount: Int = 1,
+    effectiveExcludes: Map<String, Boolean>? = null,
     onDismiss: () -> Unit,
     onCommandExecute: (CommandItem) -> Unit,
     onOpenFile: ((path: String, line: Int?, col: Int?) -> Unit)? = null,
     onNavigateLine: ((line: Int, col: Int) -> Unit)? = null,
     onOpenView: ((viewId: String) -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val resolvedExcludes = remember(effectiveExcludes) {
+        effectiveExcludes ?: run {
+            val sm = SettingsManager(context)
+            if (sm.isSearchUseIgnoreFiles()) sm.getEffectiveSearchExcludes() else emptyMap()
+        }
+    }
+
     var textFieldValue by remember {
         mutableStateOf(
             TextFieldValue(
@@ -102,7 +114,7 @@ fun VSCodeCommandPalette(
     }
 
     // Generate entries based on current mode and query parameter
-    val entries = remember(rawQuery, mode, queryParam, commandRegistry, fileTreeItems, openTabs, currentLineCount) {
+    val entries = remember(rawQuery, mode, queryParam, commandRegistry, fileTreeItems, openTabs, currentLineCount, resolvedExcludes) {
         buildQuickPickEntries(
             mode = mode,
             param = queryParam,
@@ -111,6 +123,7 @@ fun VSCodeCommandPalette(
             openTabs = openTabs,
             activeTabId = activeTabId,
             currentLineCount = currentLineCount,
+            effectiveExcludes = resolvedExcludes,
             onCommandExecute = onCommandExecute,
             onOpenFile = onOpenFile,
             onNavigateLine = onNavigateLine,
@@ -542,6 +555,7 @@ private fun buildQuickPickEntries(
     openTabs: List<CrestTabItem>,
     activeTabId: String,
     currentLineCount: Int,
+    effectiveExcludes: Map<String, Boolean> = emptyMap(),
     onCommandExecute: (CommandItem) -> Unit,
     onOpenFile: ((path: String, line: Int?, col: Int?) -> Unit)?,
     onNavigateLine: ((line: Int, col: Int) -> Unit)?,
@@ -748,7 +762,27 @@ private fun buildQuickPickEntries(
             val targetLine = lineSuffixMatch?.groupValues?.getOrNull(2)?.toIntOrNull()
             val targetCol = lineSuffixMatch?.groupValues?.getOrNull(3)?.toIntOrNull()
 
-            val onlyFiles = fileTreeItems.filter { !it.isDirectory }
+            val activeExcludeRegexes = if (effectiveExcludes.isNotEmpty()) {
+                effectiveExcludes.filter { it.value }.keys.map { GlobMatcher.globToRegex(it) }
+            } else {
+                emptyList()
+            }
+
+            val onlyFiles = fileTreeItems.filter { item ->
+                if (item.isDirectory) return@filter false
+                if (activeExcludeRegexes.isNotEmpty()) {
+                    val path = item.path
+                    val isOpen = openTabs.any { it.id == path }
+                    if (!isOpen) {
+                        for (regex in activeExcludeRegexes) {
+                            if (regex.containsMatchIn(path)) {
+                                return@filter false
+                            }
+                        }
+                    }
+                }
+                true
+            }
 
             if (fileQuery.isEmpty()) {
                 // Show open editors first

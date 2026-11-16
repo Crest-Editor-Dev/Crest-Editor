@@ -557,6 +557,13 @@ class MainActivity : ComponentActivity() {
                         openTabs = openTabs,
                         activeTabId = activeTabId,
                         currentLineCount = currentLineCount,
+                        effectiveExcludes = remember(showCommandPalette) {
+                            if (settingsManager.isSearchUseIgnoreFiles()) {
+                                settingsManager.getEffectiveSearchExcludes()
+                            } else {
+                                emptyMap()
+                            }
+                        },
                         onDismiss = { showCommandPalette = false },
                         onCommandExecute = { cmd ->
                             showCommandPalette = false
