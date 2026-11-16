@@ -140,10 +140,19 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
       const desiredTheme = currentSettings['editor.theme'] || 'vs-dark';
       const resolvedTheme = resolveTheme(desiredTheme);
 
-      // Fast on-demand load: start with active themes and essential core languages
+      // Pre-load essential languages with pure VS Code TextMate grammars
       shikiHighlighter = await createHighlighter({
         themes: [resolvedTheme, resolvedTheme === 'dark-plus' ? 'light-plus' : 'dark-plus'],
-        langs: ['javascript', 'typescript', 'html', 'css', 'json', 'jsonc']
+        langs: [
+          'javascript', 'typescript', 'jsx', 'tsx',
+          'html', 'css', 'scss', 'less',
+          'json', 'jsonc', 'yaml', 'markdown',
+          'python', 'c', 'cpp', 'csharp',
+          'rust', 'go', 'java', 'kotlin',
+          'shell', 'toml', 'sql', 'xml',
+          'ini', 'dockerfile', 'php', 'ruby',
+          'swift', 'dart'
+        ]
       });
 
       const existingLangs = new Set(monaco.languages.getLanguages().map(l => l.id));

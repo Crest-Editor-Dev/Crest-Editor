@@ -67,12 +67,8 @@ export function registerLanguage(def: ILang): void {
 	languages.register(def);
 
 	const lazyLanguageLoader = LazyLanguageLoader.getOrCreate(languageId);
-	languages.registerTokensProviderFactory(languageId, {
-		create: async (): Promise<languages.IMonarchLanguage> => {
-			const mod = await lazyLanguageLoader.load();
-			return mod.language;
-		}
-	});
+	// Pure TextMate Architecture: Monarch tokenization is disabled completely to match VS Code.
+	// Syntax highlighting is exclusively handled by Shiki TextMate engine.
 	languages.onLanguageEncountered(languageId, async () => {
 		const mod = await lazyLanguageLoader.load();
 		languages.setLanguageConfiguration(languageId, mod.conf);
