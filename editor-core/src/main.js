@@ -154,18 +154,6 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
 
         shikiToMonaco(shikiHighlighter, monaco);
 
-        // Fix HTML bracket colorization: remove < and > as bracket pairs so <!DOCTYPE> and tags never show unexpected bracket errors (matching official VS Code behavior)
-        try {
-          monaco.languages.setLanguageConfiguration('html', {
-            brackets: [
-              ['<!--', '-->'],
-              ['{', '}'],
-              ['(', ')']
-            ],
-            colorizedBracketPairs: []
-          });
-        } catch (_) {}
-
         applyShikiTheme(desiredTheme);
 
         if (footerStatusText) {
