@@ -81,11 +81,20 @@ h1 {
         }
     }
 
-    fun listFilesRecursively(dir: File, level: Int = 0): List<FileTreeItem> {
+    fun listFilesRecursively(
+        dir: File,
+        level: Int = 0,
+        excludePatterns: Map<String, Boolean> = emptyMap(),
+        rootDir: File = dir
+    ): List<FileTreeItem> {
         val result = mutableListOf<FileTreeItem>()
         val files = dir.listFiles()?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: return result
 
         for (file in files) {
+            if (excludePatterns.isNotEmpty() && com.cresteditor.core.filesystem.GlobMatcher.isFileExcluded(file, rootDir, excludePatterns)) {
+                continue
+            }
+
             val item = FileTreeItem(
                 id = file.absolutePath,
                 name = file.name,
@@ -95,7 +104,7 @@ h1 {
             )
             result.add(item)
             if (file.isDirectory) {
-                result.addAll(listFilesRecursively(file, level + 1))
+                result.addAll(listFilesRecursively(file, level + 1, excludePatterns, rootDir))
             }
         }
         return result

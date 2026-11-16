@@ -56,7 +56,9 @@ class MainViewModel : ViewModel() {
         startFileWatcher(context)
         viewModelScope.launch(Dispatchers.IO) {
             val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
-            val items = WorkspaceManager.listFilesRecursively(workspaceDir)
+            val settingsManager = com.cresteditor.core.settings.SettingsManager(context)
+            val filesExclude = settingsManager.getFilesExclude()
+            val items = WorkspaceManager.listFilesRecursively(workspaceDir, 0, filesExclude, workspaceDir)
             _fileTreeItems.value = items
 
             if (_openTabs.value.isEmpty()) {
@@ -158,7 +160,9 @@ class MainViewModel : ViewModel() {
     fun refreshWorkspace(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
-            _fileTreeItems.value = WorkspaceManager.listFilesRecursively(workspaceDir)
+            val settingsManager = com.cresteditor.core.settings.SettingsManager(context)
+            val filesExclude = settingsManager.getFilesExclude()
+            _fileTreeItems.value = WorkspaceManager.listFilesRecursively(workspaceDir, 0, filesExclude, workspaceDir)
         }
     }
 

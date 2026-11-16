@@ -27,7 +27,8 @@ enum class SettingType {
     ENUM,
     BOOLEAN,
     INT,
-    STRING
+    STRING,
+    PATTERN_MAP
 }
 
 /**
@@ -55,6 +56,7 @@ class SettingsManager(private val context: Context) {
         const val CAT_COMMONLY_USED = "Commonly Used"
         const val CAT_FILES = "Files (Auto Save)"
         const val CAT_EDITOR = "Text Editor"
+        const val CAT_SEARCH = "Search"
         const val CAT_TERMINAL = "Terminal"
         const val CAT_APPEARANCE = "Appearance"
 
@@ -62,6 +64,10 @@ class SettingsManager(private val context: Context) {
         const val KEY_FILES_AUTOSAVE = "files.autoSave"
         const val KEY_FILES_AUTOSAVE_DELAY = "files.autoSaveDelay"
         const val KEY_FILES_SHOW_HIDDEN = "files.showHiddenFiles"
+        const val KEY_FILES_EXCLUDE = "files.exclude"
+
+        const val KEY_SEARCH_EXCLUDE = "search.exclude"
+        const val KEY_SEARCH_USE_IGNORE_FILES = "search.useIgnoreFiles"
 
         const val KEY_EDITOR_FONT_SIZE = "editor.fontSize"
         const val KEY_EDITOR_TAB_SIZE = "editor.tabSize"
@@ -74,6 +80,22 @@ class SettingsManager(private val context: Context) {
         const val KEY_TERMINAL_FONT_SIZE = "terminal.integrated.fontSize"
         const val KEY_TERMINAL_CURSOR_STYLE = "terminal.integrated.cursorStyle"
         const val KEY_TERMINAL_DEFAULT_SHELL = "terminal.integrated.shell"
+
+        val DEFAULT_FILES_EXCLUDE: Map<String, Boolean> = mapOf(
+            "**/.git" to true,
+            "**/.svn" to true,
+            "**/.hg" to true,
+            "**/.DS_Store" to true,
+            "**/Thumbs.db" to true
+        )
+
+        val DEFAULT_SEARCH_EXCLUDE: Map<String, Boolean> = mapOf(
+            "**/node_modules" to true,
+            "**/bower_components" to true,
+            "**/build" to true,
+            "**/.gradle" to true,
+            "**/*.code-search" to true
+        )
 
         val SCHEMA: List<SettingDefinition> = listOf(
             SettingDefinition(
@@ -102,6 +124,30 @@ class SettingsManager(private val context: Context) {
                 description = "Controls whether files starting with a dot (.) are shown in the file explorer drawer.",
                 type = SettingType.BOOLEAN,
                 defaultValue = false
+            ),
+            SettingDefinition(
+                key = KEY_FILES_EXCLUDE,
+                title = "Files: Exclude",
+                category = CAT_FILES,
+                description = "Configure glob patterns for excluding files and folders from the File Explorer.",
+                type = SettingType.PATTERN_MAP,
+                defaultValue = DEFAULT_FILES_EXCLUDE
+            ),
+            SettingDefinition(
+                key = KEY_SEARCH_EXCLUDE,
+                title = "Search: Exclude",
+                category = CAT_SEARCH,
+                description = "Configure glob patterns for excluding files and folders from search results. Inherits all patterns from files.exclude.",
+                type = SettingType.PATTERN_MAP,
+                defaultValue = DEFAULT_SEARCH_EXCLUDE
+            ),
+            SettingDefinition(
+                key = KEY_SEARCH_USE_IGNORE_FILES,
+                title = "Search: Use Ignore Files",
+                category = CAT_SEARCH,
+                description = "Controls whether to use .gitignore and search.exclude settings when searching for files.",
+                type = SettingType.BOOLEAN,
+                defaultValue = true
             ),
             SettingDefinition(
                 key = KEY_EDITOR_FONT_SIZE,
@@ -231,6 +277,18 @@ class SettingsManager(private val context: Context) {
                             SettingType.BOOLEAN -> map[def.key] = json.getBoolean(def.key)
                             SettingType.INT -> map[def.key] = json.getInt(def.key)
                             SettingType.ENUM, SettingType.STRING -> map[def.key] = json.getString(def.key)
+                            SettingType.PATTERN_MAP -> {
+                                val obj = json.optJSONObject(def.key)
+                                val patternMap = mutableMapOf<String, Boolean>()
+                                if (obj != null) {
+                                    val keys = obj.keys()
+                                    while (keys.hasNext()) {
+                                        val pKey = keys.next()
+                                        patternMap[pKey] = obj.optBoolean(pKey, true)
+                                    }
+                                }
+                                map[def.key] = patternMap
+                            }
                         }
                     }
                 }
@@ -253,7 +311,15 @@ class SettingsManager(private val context: Context) {
         try {
             val json = JSONObject()
             map.forEach { (k, v) ->
-                json.put(k, v)
+                if (v is Map<*, *>) {
+                    val childObj = JSONObject()
+                    v.forEach { (ck, cv) ->
+                        childObj.put(ck.toString(), cv)
+                    }
+                    json.put(k, childObj)
+                } else {
+                    json.put(k, v)
+                }
             }
             settingsFile.writeText(json.toString(2))
         } catch (e: Exception) {
@@ -345,6 +411,18 @@ class SettingsManager(private val context: Context) {
                         SettingType.BOOLEAN -> newMap[def.key] = parsed.getBoolean(def.key)
                         SettingType.INT -> newMap[def.key] = parsed.getInt(def.key)
                         SettingType.ENUM, SettingType.STRING -> newMap[def.key] = parsed.getString(def.key)
+                        SettingType.PATTERN_MAP -> {
+                            val obj = parsed.optJSONObject(def.key)
+                            val patternMap = mutableMapOf<String, Boolean>()
+                            if (obj != null) {
+                                val keys = obj.keys()
+                                while (keys.hasNext()) {
+                                    val pKey = keys.next()
+                                    patternMap[pKey] = obj.optBoolean(pKey, true)
+                                }
+                            }
+                            newMap[def.key] = patternMap
+                        }
                     }
                 }
             }
@@ -391,6 +469,52 @@ class SettingsManager(private val context: Context) {
     var showHiddenFiles: Boolean
         get() = getOrDefault(KEY_FILES_SHOW_HIDDEN, false)
         set(value) = set(KEY_FILES_SHOW_HIDDEN, value)
+
+    @Suppress("UNCHECKED_CAST")
+    fun getFilesExclude(): Map<String, Boolean> {
+        return getOrDefault(KEY_FILES_EXCLUDE, DEFAULT_FILES_EXCLUDE)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    fun getSearchExclude(): Map<String, Boolean> {
+        return getOrDefault(KEY_SEARCH_EXCLUDE, DEFAULT_SEARCH_EXCLUDE)
+    }
+
+    fun isSearchUseIgnoreFiles(): Boolean {
+        return getOrDefault(KEY_SEARCH_USE_IGNORE_FILES, true)
+    }
+
+    /**
+     * Resolves the combined effective exclude patterns for search,
+     * mirroring VS Code's search.ts getExcludes() architecture.
+     */
+    fun getEffectiveSearchExcludes(): Map<String, Boolean> {
+        val result = mutableMapOf<String, Boolean>()
+        result.putAll(getFilesExclude())
+        result.putAll(getSearchExclude())
+        return result
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    fun setPatternEnabled(settingKey: String, pattern: String, enabled: Boolean) {
+        val current = (getOrDefault(settingKey, emptyMap<String, Boolean>())).toMutableMap()
+        current[pattern] = enabled
+        set(settingKey, current)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    fun addPattern(settingKey: String, pattern: String) {
+        val current = (getOrDefault(settingKey, emptyMap<String, Boolean>())).toMutableMap()
+        current[pattern] = true
+        set(settingKey, current)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    fun removePattern(settingKey: String, pattern: String) {
+        val current = (getOrDefault(settingKey, emptyMap<String, Boolean>())).toMutableMap()
+        current.remove(pattern)
+        set(settingKey, current)
+    }
 
     var folderAnimationEnabled: Boolean = true
     var densityScale: Float = 1.0f

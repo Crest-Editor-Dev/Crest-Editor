@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import com.cresteditor.ui.components.PatternListSetting
 import com.cresteditor.ui.components.VSCodeDialog
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -877,6 +878,29 @@ private fun VSCodeSettingRow(
                                 cursorBrush = SolidColor(VSCodeFocusBorder)
                             )
                         }
+                    }
+
+                    SettingType.PATTERN_MAP -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val patternMap = (currentValue as? Map<String, Boolean>) ?: emptyMap()
+                        PatternListSetting(
+                            patterns = patternMap,
+                            onTogglePattern = { pattern, enabled ->
+                                val updated = patternMap.toMutableMap()
+                                updated[pattern] = enabled
+                                onValueChange(updated)
+                            },
+                            onAddPattern = { pattern ->
+                                val updated = patternMap.toMutableMap()
+                                updated[pattern] = true
+                                onValueChange(updated)
+                            },
+                            onRemovePattern = { pattern ->
+                                val updated = patternMap.toMutableMap()
+                                updated.remove(pattern)
+                                onValueChange(updated)
+                            }
+                        )
                     }
                 }
             }
