@@ -97,6 +97,14 @@ fun VSCodeCommandPalette(
         }
     }
 
+    val activeExcludeRegexes = remember(resolvedExcludes) {
+        if (resolvedExcludes.isNotEmpty()) {
+            resolvedExcludes.filter { it.value }.keys.map { GlobMatcher.globToRegex(it) }
+        } else {
+            emptyList()
+        }
+    }
+
     var textFieldValue by remember {
         mutableStateOf(
             TextFieldValue(
@@ -113,7 +121,7 @@ fun VSCodeCommandPalette(
     }
 
     // Generate entries based on current mode and query parameter
-    val entries = remember(rawQuery, mode, queryParam, commandRegistry, fileTreeItems, openTabs, currentLineCount, resolvedExcludes) {
+    val entries = remember(rawQuery, mode, queryParam, commandRegistry, fileTreeItems, openTabs, currentLineCount, activeExcludeRegexes) {
         buildQuickPickEntries(
             mode = mode,
             param = queryParam,
@@ -122,7 +130,7 @@ fun VSCodeCommandPalette(
             openTabs = openTabs,
             activeTabId = activeTabId,
             currentLineCount = currentLineCount,
-            effectiveExcludes = resolvedExcludes,
+            activeExcludeRegexes = activeExcludeRegexes,
             onCommandExecute = onCommandExecute,
             onOpenFile = onOpenFile,
             onNavigateLine = onNavigateLine,
@@ -155,9 +163,9 @@ fun VSCodeCommandPalette(
         focusRequester.requestFocus()
     }
 
-    // Scroll to active index on navigation
+    // Scroll to active index on user navigation
     LaunchedEffect(selectedIndex) {
-        if (selectableItems.isNotEmpty() && selectedIndex in selectableItems.indices) {
+        if (selectedIndex > 0 && selectableItems.isNotEmpty() && selectedIndex in selectableItems.indices) {
             val targetEntry = selectableItems[selectedIndex]
             val visualIndex = entries.indexOf(targetEntry)
             if (visualIndex >= 0) {
@@ -547,7 +555,7 @@ private fun buildQuickPickEntries(
     openTabs: List<CrestTabItem>,
     activeTabId: String,
     currentLineCount: Int,
-    effectiveExcludes: Map<String, Boolean> = emptyMap(),
+    activeExcludeRegexes: List<Regex> = emptyList(),
     onCommandExecute: (CommandItem) -> Unit,
     onOpenFile: ((path: String, line: Int?, col: Int?) -> Unit)?,
     onNavigateLine: ((line: Int, col: Int) -> Unit)?,
@@ -753,41 +761,18 @@ private fun buildQuickPickEntries(
             val fileQuery = lineSuffixMatch?.groupValues?.getOrNull(1)?.trim() ?: param.trim()
             val targetLine = lineSuffixMatch?.groupValues?.getOrNull(2)?.toIntOrNull()
             val targetCol = lineSuffixMatch?.groupValues?.getOrNull(3)?.toIntOrNull()
-
-            val activeExcludeRegexes = if (effectiveExcludes.isNotEmpty()) {
-                effectiveExcludes.filter { it.value }.keys.map { GlobMatcher.globToRegex(it) }
-            } else {
-                emptyList()
-            }
-
-            val onlyFiles = fileTreeItems.filter { item ->
-                if (item.isDirectory) return@filter false
-                if (activeExcludeRegexes.isNotEmpty()) {
-                    val path = item.path
-                    val isOpen = openTabs.any { it.id == path }
-                    if (!isOpen) {
-                        for (regex in activeExcludeRegexes) {
-                            if (regex.containsMatchIn(path)) {
-                                return@filter false
-                            }
-                        }
-                    }
-                }
-                true
-            }
+            val openTabIds = openTabs.map { it.id }.toSet()
 
             if (fileQuery.isEmpty()) {
-                // Show open editors first
+                // 1. Show open editors first (instant O(openTabs))
                 if (openTabs.isNotEmpty()) {
                     result.add(QuickPickEntry.Header("open editors"))
                     openTabs.forEach { tab ->
-                        val targetItem = onlyFiles.find { it.path == tab.id }
-                        val desc = targetItem?.path ?: tab.id
                         result.add(
                             QuickPickEntry.Item(
                                 id = "tab_${tab.id}",
                                 label = tab.title,
-                                description = desc.substringAfterLast('/', ""),
+                                description = tab.id.substringAfterLast('/', ""),
                                 shortcut = "OPEN",
                                 isModified = tab.isModified,
                                 icon = QuickPickIcon.FILE,
@@ -799,13 +784,33 @@ private fun buildQuickPickEntries(
                     }
                 }
 
-                // Followed by workspace files
-                val remainingFiles = onlyFiles.filter { f -> openTabs.none { it.id == f.path } }
-                if (remainingFiles.isNotEmpty()) {
+                // 2. Followed by workspace files (with early exit after 40 items)
+                val workspaceFiles = mutableListOf<FileTreeItem>()
+                for (item in fileTreeItems) {
+                    if (item.isDirectory) continue
+                    val path = item.path
+                    if (openTabIds.contains(path)) continue
+
+                    if (activeExcludeRegexes.isNotEmpty()) {
+                        var isExcluded = false
+                        for (regex in activeExcludeRegexes) {
+                            if (regex.containsMatchIn(path)) {
+                                isExcluded = true
+                                break
+                            }
+                        }
+                        if (isExcluded) continue
+                    }
+
+                    workspaceFiles.add(item)
+                    if (workspaceFiles.size >= 40) break // Early break avoids scanning tens of thousands of files!
+                }
+
+                if (workspaceFiles.isNotEmpty()) {
                     if (openTabs.isNotEmpty()) {
                         result.add(QuickPickEntry.Header("workspace files"))
                     }
-                    remainingFiles.take(40).forEach { file ->
+                    workspaceFiles.forEach { file ->
                         result.add(
                             QuickPickEntry.Item(
                                 id = "file_${file.path}",
@@ -820,6 +825,9 @@ private fun buildQuickPickEntries(
                     }
                 }
             } else {
+                val queryLower = fileQuery.lowercase()
+                val queryHasSlash = queryLower.contains('/')
+
                 data class ScoredFile(
                     val file: FileTreeItem,
                     val isOpen: Boolean,
@@ -829,9 +837,38 @@ private fun buildQuickPickEntries(
                 )
                 val scored = mutableListOf<ScoredFile>()
 
-                for (file in onlyFiles) {
-                    val openTab = openTabs.find { it.id == file.path }
-                    val isOpen = openTab != null
+                for (file in fileTreeItems) {
+                    if (file.isDirectory) continue
+                    val nameLower = file.name.lowercase()
+
+                    // Fast character matching check: skip 99% of files in primitive loops
+                    val matchesDirectly = nameLower.contains(queryLower) || (queryHasSlash && file.path.lowercase().contains(queryLower))
+                    if (!matchesDirectly) {
+                        var qI = 0
+                        for (cI in nameLower.indices) {
+                            if (qI < queryLower.length && nameLower[cI] == queryLower[qI]) {
+                                qI++
+                            }
+                        }
+                        if (qI < queryLower.length) continue
+                    }
+
+                    val path = file.path
+                    val isOpen = openTabIds.contains(path)
+
+                    // Only run exclude regexes on files that matched the query!
+                    if (!isOpen && activeExcludeRegexes.isNotEmpty()) {
+                        var isExcluded = false
+                        for (regex in activeExcludeRegexes) {
+                            if (regex.containsMatchIn(path)) {
+                                isExcluded = true
+                                break
+                            }
+                        }
+                        if (isExcluded) continue
+                    }
+
+                    val openTab = if (isOpen) openTabs.find { it.id == path } else null
                     val isModified = openTab?.isModified == true
 
                     val nameMatch = QuickAccessFuzzyScorer.score(file.name, fileQuery)
@@ -845,6 +882,8 @@ private fun buildQuickPickEntries(
                             scored.add(ScoredFile(file, isOpen, isModified, finalScore, emptyList()))
                         }
                     }
+
+                    if (scored.size >= 150) break // Cap search results to avoid massive sorts
                 }
 
                 scored.sortByDescending { it.score }
