@@ -365,6 +365,73 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
     });
   }
 
+  function resolveLanguage(filePath, explicitLanguage) {
+    if (explicitLanguage && explicitLanguage !== 'plaintext') {
+      return explicitLanguage;
+    }
+    if (!filePath) return 'plaintext';
+
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const filename = normalizedPath.split('/').pop().toLowerCase();
+
+    // 1. Check exact filenames from Monaco's registered languages
+    for (const lang of monaco.languages.getLanguages()) {
+      if (lang.filenames && lang.filenames.some(f => f.toLowerCase() === filename)) {
+        return lang.id;
+      }
+    }
+
+    // 2. Check extensions from Monaco's registered languages
+    for (const lang of monaco.languages.getLanguages()) {
+      if (lang.extensions) {
+        for (const ext of lang.extensions) {
+          if (filename.endsWith(ext.toLowerCase())) {
+            return lang.id;
+          }
+        }
+      }
+    }
+
+    // 3. Fallback dictionary for common languages & extensions
+    const ext = filename.includes('.') ? '.' + filename.split('.').pop() : '';
+    const fallbackMap = {
+      '.yml': 'yaml',
+      '.yaml': 'yaml',
+      '.toml': 'toml',
+      '.rs': 'rust',
+      '.go': 'go',
+      '.c': 'c',
+      '.h': 'c',
+      '.cpp': 'cpp',
+      '.hpp': 'cpp',
+      '.cc': 'cpp',
+      '.cxx': 'cpp',
+      '.cs': 'csharp',
+      '.php': 'php',
+      '.rb': 'ruby',
+      '.swift': 'swift',
+      '.dart': 'dart',
+      '.lua': 'lua',
+      '.sh': 'shell',
+      '.bash': 'shell',
+      '.zsh': 'shell',
+      '.ps1': 'powershell',
+      '.bat': 'bat',
+      '.cmd': 'bat',
+      '.vue': 'vue',
+      '.svelte': 'svelte',
+      '.r': 'r',
+      '.zig': 'zig',
+      '.jsonc': 'jsonc',
+      '.dockerfile': 'dockerfile'
+    };
+    if (fallbackMap[ext]) {
+      return fallbackMap[ext];
+    }
+
+    return explicitLanguage || 'plaintext';
+  }
+
   // Global Bridge API
   window.CrestEditorAPI = {
     isReady: function() {
@@ -408,20 +475,22 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
       if (!editor) return false;
       if (autoSaveTimer) clearTimeout(autoSaveTimer);
 
-      if (languageId && shikiHighlighter && !loadedShikiLanguages.has(languageId)) {
-        ensureLanguageLoaded(languageId).catch(console.error);
+      const resolvedLang = resolveLanguage(filePath, languageId);
+
+      if (resolvedLang && resolvedLang !== 'plaintext' && shikiHighlighter && !loadedShikiLanguages.has(resolvedLang)) {
+        ensureLanguageLoaded(resolvedLang).catch(console.error);
       }
 
       try {
         const uri = monaco.Uri.file(filePath);
         let model = monaco.editor.getModel(uri);
         if (!model) {
-          model = monaco.editor.createModel(content || '', languageId, uri);
+          model = monaco.editor.createModel(content || '', resolvedLang, uri);
           isContentDirty = false;
         } else {
           // Model already exists in memory: preserve its text, undo stack, and dirty status!
-          if (languageId) {
-            monaco.editor.setModelLanguage(model, languageId);
+          if (resolvedLang) {
+            monaco.editor.setModelLanguage(model, resolvedLang);
           }
           isContentDirty = (typeof isModified === 'boolean') ? isModified : isContentDirty;
         }
@@ -452,6 +521,12 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
       try {
         const oldUri = monaco.Uri.file(oldPath);
         const newUri = monaco.Uri.file(newPath);
+        const resolvedLang = resolveLanguage(newPath, languageId);
+
+        if (resolvedLang && resolvedLang !== 'plaintext' && shikiHighlighter && !loadedShikiLanguages.has(resolvedLang)) {
+          ensureLanguageLoaded(resolvedLang).catch(console.error);
+        }
+
         const oldModel = monaco.editor.getModel(oldUri);
         if (!oldModel) return false;
 
@@ -461,10 +536,13 @@ import TsWorker from './languages/features/typescript/ts.worker?worker&inline';
 
         let newModel = monaco.editor.getModel(newUri);
         if (!newModel) {
-          newModel = monaco.editor.createModel(content, languageId, newUri);
+          newModel = monaco.editor.createModel(content, resolvedLang, newUri);
         } else {
           if (newModel.getValue() !== content) {
             newModel.setValue(content);
+          }
+          if (resolvedLang) {
+            monaco.editor.setModelLanguage(newModel, resolvedLang);
           }
         }
 
