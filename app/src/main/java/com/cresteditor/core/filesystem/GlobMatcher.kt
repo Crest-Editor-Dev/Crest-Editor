@@ -6,9 +6,9 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * High-performance Glob Matcher modeled after VS Code's glob.ts engine.
  * Supports:
- * - '**/.git' / '**/node_modules' (wildcard folder matching anywhere)
- * - '*.log' (wildcard file extensions)
- * - 'build/*' / 'src/**' (prefix and nested paths)
+ * - wildcards like **/.git and **/node_modules
+ * - extension patterns like *.log
+ * - prefix and nested path globs like build or src
  * Uses a thread-safe ConcurrentHashMap cache for compiled regular expressions.
  */
 object GlobMatcher {
