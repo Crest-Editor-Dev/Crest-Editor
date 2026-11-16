@@ -25,8 +25,12 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
@@ -75,6 +79,10 @@ fun SearchPane(
     var filesToInclude by remember { mutableStateOf("") }
     var filesToExclude by remember { mutableStateOf("") }
     var useExcludeSettings by remember { mutableStateOf(settingsManager.isSearchUseIgnoreFiles()) }
+
+    var isSearching by remember { mutableStateOf(false) }
+    var filteredFiles by remember { mutableStateOf<List<FileTreeItem>>(emptyList()) }
+    var searchTrigger by remember { mutableLongStateOf(0L) }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -172,7 +180,10 @@ fun SearchPane(
                 }
                 BasicTextField(
                     value = searchQuery,
-                    onValueChange = { searchQuery = it },
+                    onValueChange = {
+                        searchQuery = it
+                        searchTrigger = 0L
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .onFocusChanged { isSearchFocused = it.isFocused },
@@ -184,6 +195,7 @@ fun SearchPane(
                     cursorBrush = SolidColor(DrawerTheme.FocusBorder),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = {
+                        searchTrigger = System.currentTimeMillis()
                         focusManager.clearFocus()
                         keyboardController?.hide()
                     })
@@ -193,6 +205,8 @@ fun SearchPane(
                 IconButton(
                     onClick = {
                         searchQuery = ""
+                        filteredFiles = emptyList()
+                        isSearching = false
                         focusManager.clearFocus()
                         keyboardController?.hide()
                     },
@@ -294,40 +308,102 @@ fun SearchPane(
             }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
-
         // -------------------------------------------------------------
-        // 3. Search Results Filtering (Respecting Excludes)
+        // 3. Debounced Asynchronous Search (Off UI Thread)
         // -------------------------------------------------------------
-        val filteredFiles = remember(searchQuery, fileList, useExcludeSettings, filesToInclude, filesToExclude) {
-            if (searchQuery.isBlank()) emptyList()
-            else {
-                fileList.filter { item ->
-                    if (item.isDirectory) return@filter false
-
-                    // Substring match on query
-                    val matchesQuery = item.name.contains(searchQuery, ignoreCase = true)
-                    if (!matchesQuery) return@filter false
-
-                    // Smart exclude filtering
-                    if (useExcludeSettings && GlobMatcher.isExcluded(item.path, effectiveExcludes)) {
-                        return@filter false
-                    }
-
-                    // User filesToExclude pattern
-                    if (filesToExclude.isNotBlank() && GlobMatcher.matches(filesToExclude.trim(), item.path)) {
-                        return@filter false
-                    }
-
-                    // User filesToInclude pattern
-                    if (filesToInclude.isNotBlank() && !GlobMatcher.matches(filesToInclude.trim(), item.path)) {
-                        return@filter false
-                    }
-
-                    true
-                }
+        LaunchedEffect(searchQuery, filesToInclude, filesToExclude, useExcludeSettings, fileList, searchTrigger) {
+            val query = searchQuery.trim()
+            if (query.isEmpty()) {
+                filteredFiles = emptyList()
+                isSearching = false
+                return@LaunchedEffect
             }
+
+            isSearching = true
+            // Debounce typing by 150ms (VS Code delayer style).
+            // If explicitly triggered via IME search button, run immediately.
+            if (searchTrigger == 0L) {
+                delay(150)
+            }
+
+            val activeExcludes = if (useExcludeSettings) {
+                effectiveExcludes.filter { it.value }.keys.map { GlobMatcher.globToRegex(it) }
+            } else {
+                emptyList()
+            }
+
+            val trimmedInclude = filesToInclude.trim()
+            val includeRegex = if (trimmedInclude.isNotEmpty()) GlobMatcher.globToRegex(trimmedInclude) else null
+
+            val trimmedExclude = filesToExclude.trim()
+            val excludeRegex = if (trimmedExclude.isNotEmpty()) GlobMatcher.globToRegex(trimmedExclude) else null
+
+            val results = withContext(Dispatchers.Default) {
+                val queryLower = query.lowercase()
+                val queryHasSlash = queryLower.contains('/')
+                val matches = ArrayList<FileTreeItem>()
+
+                for (item in fileList) {
+                    if (item.isDirectory) continue
+
+                    // 1. Fast substring search on filename (and path only if query contains '/')
+                    val matchesName = item.name.contains(queryLower, ignoreCase = true)
+                    val matchesPath = if (!matchesName && queryHasSlash) {
+                        item.path.contains(queryLower, ignoreCase = true)
+                    } else {
+                        false
+                    }
+                    if (!matchesName && !matchesPath) continue
+
+                    val path = item.path
+
+                    // 2. Exclude settings (files.exclude & search.exclude)
+                    if (activeExcludes.isNotEmpty()) {
+                        var excluded = false
+                        for (patternRegex in activeExcludes) {
+                            if (patternRegex.containsMatchIn(path)) {
+                                excluded = true
+                                break
+                            }
+                        }
+                        if (excluded) continue
+                    }
+
+                    // 3. User filesToExclude pattern
+                    if (excludeRegex != null && excludeRegex.containsMatchIn(path)) {
+                        continue
+                    }
+
+                    // 4. User filesToInclude pattern
+                    if (includeRegex != null && !includeRegex.containsMatchIn(path)) {
+                        continue
+                    }
+
+                    matches.add(item)
+                    if (matches.size >= 1000) break // Cap results to prevent UI memory pressure
+                }
+                matches.distinctBy { it.path }
+            }
+
+            filteredFiles = results
+            isSearching = false
         }
+
+        // Animated progress line (matches VS Code search progress bar)
+        if (isSearching) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .padding(top = 4.dp),
+                color = DrawerTheme.FocusBorder,
+                trackColor = Color.Transparent
+            )
+        } else {
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         if (searchQuery.isNotBlank()) {
             Text(
@@ -337,15 +413,15 @@ fun SearchPane(
                 modifier = Modifier.padding(bottom = 6.dp)
             )
 
-            if (filteredFiles.isEmpty()) {
+            if (filteredFiles.isEmpty() && !isSearching) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(Unit) {
-                            detectDragGestures { _, _ ->
+                            detectTapGestures(onTap = {
                                 focusManager.clearFocus()
                                 keyboardController?.hide()
-                            }
+                            })
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -360,7 +436,11 @@ fun SearchPane(
                     state = searchListState,
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(filteredFiles, key = { it.path }) { item ->
+                    items(
+                        items = filteredFiles,
+                        key = { it.path },
+                        contentType = { "file_search_result" }
+                    ) { item ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -372,7 +452,7 @@ fun SearchPane(
                                 .padding(vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val iconData = FileTypeRegistry.getFileIcon(item.name)
+                            val iconData = remember(item.name) { FileTypeRegistry.getFileIcon(item.name) }
                             Icon(
                                 imageVector = iconData.first,
                                 contentDescription = null,
@@ -383,8 +463,22 @@ fun SearchPane(
                             Text(
                                 text = item.name,
                                 color = DrawerTheme.TextPrimary,
-                                fontSize = 13.5.sp
+                                fontSize = 13.5.sp,
+                                maxLines = 1
                             )
+                            val parentFolder = remember(item.path) {
+                                val file = java.io.File(item.path)
+                                file.parentFile?.name ?: ""
+                            }
+                            if (parentFolder.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = parentFolder,
+                                    color = DrawerTheme.ActivityBarInactive,
+                                    fontSize = 11.sp,
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
                 }
@@ -394,10 +488,10 @@ fun SearchPane(
                 modifier = Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
-                        detectDragGestures { _, _ ->
+                        detectTapGestures(onTap = {
                             focusManager.clearFocus()
                             keyboardController?.hide()
-                        }
+                        })
                     }
             )
         }
