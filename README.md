@@ -6,7 +6,7 @@ A high-performance Android code editor built with Jetpack Compose and a desktop-
 [![UI](https://img.shields.io/badge/UI-Jetpack%20Compose%20%2F%20Material%203-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)](#)
 [![Editor](https://img.shields.io/badge/Editor-Monaco%20Editor%20(VS%20Code)-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](#)
 [![Sandbox](https://img.shields.io/badge/Linux%20Sandbox-PRoot%20%2B%20Terminal-0D597F?style=for-the-badge&logo=alpinelinux&logoColor=white)](#)
-[![License](https://img.shields.io/badge/License-MIT-brightgreen?style=for-the-badge)](#)
+[![License](https://img.shields.io/badge/License-GPL--3.0-brightgreen?style=for-the-badge)](LICENSE)
 
 ## Overview
 
@@ -139,7 +139,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for more information.
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0). See the `LICENSE` file for more information.
 
 ## Contributing
 
