@@ -3,14 +3,9 @@ package com.cresteditor.core.filesystem
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * High-performance Glob Matcher modeled after VS Code's glob.ts engine.
- * Supports:
- * - wildcards like **/.git and **/node_modules
- * - extension patterns like *.log
- * - prefix and nested path globs like build or src
- * Uses a thread-safe ConcurrentHashMap cache for compiled regular expressions.
- */
+// High-performance Glob Matcher modeled after VS Code glob.ts engine.
+// Supports wildcards like **/.git and **/node_modules, extension patterns like *.log,
+// and path globs like build or src. Uses a thread-safe ConcurrentHashMap cache for compiled regex.
 object GlobMatcher {
 
     private val regexCache = ConcurrentHashMap<String, Regex>()
