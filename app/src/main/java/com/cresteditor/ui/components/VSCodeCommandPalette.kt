@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.ViewQuilt
 import androidx.compose.material3.Divider
@@ -260,14 +259,7 @@ fun VSCodeCommandPalette(
                             )
                         }
                         QuickAccessMode.FILES -> {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = VSCodeShortcut,
-                                modifier = Modifier
-                                    .size(15.dp)
-                                    .padding(end = 4.dp)
-                            )
+                            // Exact VS Code & Zed behavior: no leading icon, keeping the input completely clean
                         }
                     }
 
