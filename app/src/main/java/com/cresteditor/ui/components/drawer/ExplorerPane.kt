@@ -93,8 +93,8 @@ fun ExplorerPane(
     // Sync active tree with active file tab if no tree was explicitly focused yet
     LaunchedEffect(activeTabId, fileList) {
         if (activeFolderTreePath == null && activeTabId.isNotEmpty()) {
-            val parentPath = File(activeTabId).parent
-            if (parentPath != null && expandedPaths.contains(parentPath) && fileList.any { it.path == parentPath && it.isDirectory }) {
+            val parentPath = activeTabId.substringBeforeLast(File.separatorChar, "")
+            if (parentPath.isNotEmpty() && expandedPaths.contains(parentPath) && fileList.any { it.path == parentPath && it.isDirectory }) {
                 activeFolderTreePath = parentPath
             }
         }
@@ -221,34 +221,38 @@ fun ExplorerPane(
         // 3. File Tree List
         // ---------------------------------------------------------
         if (!isProjectCollapsed) {
-            val allDirPaths = remember(fileList) {
-                fileList.filter { it.isDirectory }.map { it.path }.toSet()
-            }
-
-            val visibleFiles = remember(fileList, expandedPaths, allDirPaths) {
-                fileList.filter { item ->
-                    if (item.level == 0) {
-                        true
-                    } else {
-                        var currentParent = File(item.path).parent
-                        var isVisible = true
-                        while (currentParent != null && allDirPaths.contains(currentParent)) {
-                            if (!expandedPaths.contains(currentParent)) {
-                                isVisible = false
-                                break
+            val visibleFiles = remember(fileList, expandedPaths) {
+                if (fileList.isEmpty()) {
+                    emptyList()
+                } else if (expandedPaths.isEmpty()) {
+                    fileList.filter { it.level == 0 }
+                } else {
+                    val result = ArrayList<FileTreeItem>(fileList.size.coerceAtMost(256))
+                    var skipLevel = Int.MAX_VALUE
+                    for (item in fileList) {
+                        if (item.level <= skipLevel) {
+                            skipLevel = Int.MAX_VALUE
+                            result.add(item)
+                            if (item.isDirectory && !expandedPaths.contains(item.path)) {
+                                skipLevel = item.level
                             }
-                            currentParent = File(currentParent).parent
                         }
-                        isVisible
                     }
+                    result
                 }
             }
 
-            val activeFolderItem = remember(activeFolderTreePath, fileList, expandedPaths) {
+            val activeFolderItem = remember(activeFolderTreePath, visibleFiles, expandedPaths) {
                 if (activeFolderTreePath == null) null
                 else {
-                    val folder = fileList.find { it.path == activeFolderTreePath && it.isDirectory }
+                    val folder = visibleFiles.find { it.path == activeFolderTreePath && it.isDirectory }
                     if (folder != null && expandedPaths.contains(folder.path)) folder else null
+                }
+            }
+
+            val activeFolderPrefix = remember(activeFolderItem) {
+                activeFolderItem?.let {
+                    if (it.path.endsWith(File.separator)) it.path else "${it.path}${File.separator}"
                 }
             }
 
@@ -377,17 +381,7 @@ fun ExplorerPane(
                             val isExpanded = expandedPaths.contains(item.path)
                             val isActive = !isFolder && item.path == activeTabId
 
-                            val isInsideActiveTree = remember(activeFolderItem, item.path) {
-                                if (activeFolderItem == null) false
-                                else {
-                                    val prefix = if (activeFolderItem.path.endsWith(File.separator)) {
-                                        activeFolderItem.path
-                                    } else {
-                                        "${activeFolderItem.path}${File.separator}"
-                                    }
-                                    item.path.startsWith(prefix)
-                                }
-                            }
+                            val isInsideActiveTree = activeFolderPrefix != null && item.path.startsWith(activeFolderPrefix)
 
                             Box(
                                 modifier = Modifier
@@ -405,8 +399,8 @@ fun ExplorerPane(
                                                     if (expandedPaths.contains(item.path)) {
                                                         expandedPaths = expandedPaths - item.path
                                                         if (activeFolderTreePath == item.path || (activeFolderTreePath != null && activeFolderTreePath!!.startsWith("${item.path}${File.separator}"))) {
-                                                            val parentPath = File(item.path).parent
-                                                            val isParentExpanded = parentPath != null && expandedPaths.contains(parentPath)
+                                                            val parentPath = item.path.substringBeforeLast(File.separatorChar, "")
+                                                            val isParentExpanded = parentPath.isNotEmpty() && expandedPaths.contains(parentPath)
                                                             activeFolderTreePath = if (isParentExpanded) parentPath else null
                                                         }
                                                     } else {
@@ -415,8 +409,8 @@ fun ExplorerPane(
                                                     }
                                                 } else {
                                                     onFileSelect(item)
-                                                    val parentPath = File(item.path).parent
-                                                    if (parentPath != null && expandedPaths.contains(parentPath)) {
+                                                    val parentPath = item.path.substringBeforeLast(File.separatorChar, "")
+                                                    if (parentPath.isNotEmpty() && expandedPaths.contains(parentPath)) {
                                                         activeFolderTreePath = parentPath
                                                     }
                                                 }
@@ -509,98 +503,6 @@ fun ExplorerPane(
                                         )
                                     }
                                 }
-
-                                // VS Code Standard Context Menu
-                                if (contextMenuItem == item) {
-                                    VSCodeDropdownMenu(
-                                        expanded = true,
-                                        offset = touchOffset,
-                                        onDismissRequest = { contextMenuItem = null }
-                                    ) {
-                                        if (item.isDirectory) {
-                                            VSCodeMenuItem(
-                                                text = "New File...",
-                                                onClick = {
-                                                    contextMenuItem = null
-                                                    startInlineCreation(isFolder = false, parentPath = item.path)
-                                                }
-                                            )
-                                            VSCodeMenuItem(
-                                                text = "New Folder...",
-                                                onClick = {
-                                                    contextMenuItem = null
-                                                    startInlineCreation(isFolder = true, parentPath = item.path)
-                                                }
-                                            )
-                                            VSCodeMenuSeparator()
-                                        }
-
-                                        VSCodeMenuItem(
-                                            text = "Cut",
-                                            shortcut = "Ctrl+X",
-                                            enabled = false,
-                                            onClick = { contextMenuItem = null }
-                                        )
-                                        VSCodeMenuItem(
-                                            text = "Copy",
-                                            shortcut = "Ctrl+C",
-                                            enabled = false,
-                                            onClick = { contextMenuItem = null }
-                                        )
-                                        VSCodeMenuItem(
-                                            text = "Paste",
-                                            shortcut = "Ctrl+V",
-                                            enabled = false,
-                                            onClick = { contextMenuItem = null }
-                                        )
-
-                                        VSCodeMenuSeparator()
-
-                                        VSCodeMenuItem(
-                                            text = "Copy Path",
-                                            onClick = {
-                                                contextMenuItem = null
-                                                ClipboardHelper.copyText(context, item.path, "path")
-                                                Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
-                                            }
-                                        )
-                                        VSCodeMenuItem(
-                                            text = "Copy Relative Path",
-                                            onClick = {
-                                                contextMenuItem = null
-                                                val relPath = if (workspaceDir != null) {
-                                                    try {
-                                                        File(item.path).relativeTo(workspaceDir).path
-                                                    } catch (_: Exception) {
-                                                        item.name
-                                                    }
-                                                } else item.name
-                                                ClipboardHelper.copyText(context, relPath, "relative_path")
-                                                Toast.makeText(context, "Relative path copied to clipboard", Toast.LENGTH_SHORT).show()
-                                            }
-                                        )
-
-                                        VSCodeMenuSeparator()
-
-                                        VSCodeMenuItem(
-                                            text = "Rename...",
-                                            shortcut = "F2",
-                                            onClick = {
-                                                contextMenuItem = null
-                                                startInlineRename(item)
-                                            }
-                                        )
-                                        VSCodeMenuItem(
-                                            text = "Delete",
-                                            shortcut = "Del",
-                                            isDestructive = true,
-                                            onClick = {
-                                                contextMenuItem = null
-                                                onDeleteClick(item)
-                                            }
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
@@ -679,6 +581,99 @@ fun ExplorerPane(
                             }
                         }
                     }
+                }
+            }
+
+            // VS Code Standard Context Menu for Item
+            if (contextMenuItem != null) {
+                val item = contextMenuItem!!
+                VSCodeDropdownMenu(
+                    expanded = true,
+                    offset = touchOffset,
+                    onDismissRequest = { contextMenuItem = null }
+                ) {
+                    if (item.isDirectory) {
+                        VSCodeMenuItem(
+                            text = "New File...",
+                            onClick = {
+                                contextMenuItem = null
+                                startInlineCreation(isFolder = false, parentPath = item.path)
+                            }
+                        )
+                        VSCodeMenuItem(
+                            text = "New Folder...",
+                            onClick = {
+                                contextMenuItem = null
+                                startInlineCreation(isFolder = true, parentPath = item.path)
+                            }
+                        )
+                        VSCodeMenuSeparator()
+                    }
+
+                    VSCodeMenuItem(
+                        text = "Cut",
+                        shortcut = "Ctrl+X",
+                        enabled = false,
+                        onClick = { contextMenuItem = null }
+                    )
+                    VSCodeMenuItem(
+                        text = "Copy",
+                        shortcut = "Ctrl+C",
+                        enabled = false,
+                        onClick = { contextMenuItem = null }
+                    )
+                    VSCodeMenuItem(
+                        text = "Paste",
+                        shortcut = "Ctrl+V",
+                        enabled = false,
+                        onClick = { contextMenuItem = null }
+                    )
+
+                    VSCodeMenuSeparator()
+
+                    VSCodeMenuItem(
+                        text = "Copy Path",
+                        onClick = {
+                            contextMenuItem = null
+                            ClipboardHelper.copyText(context, item.path, "path")
+                            Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    VSCodeMenuItem(
+                        text = "Copy Relative Path",
+                        onClick = {
+                            contextMenuItem = null
+                            val relPath = if (workspaceDir != null) {
+                                try {
+                                    File(item.path).relativeTo(workspaceDir).path
+                                } catch (_: Exception) {
+                                    item.name
+                                }
+                            } else item.name
+                            ClipboardHelper.copyText(context, relPath, "relative_path")
+                            Toast.makeText(context, "Relative path copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+
+                    VSCodeMenuSeparator()
+
+                    VSCodeMenuItem(
+                        text = "Rename...",
+                        shortcut = "F2",
+                        onClick = {
+                            contextMenuItem = null
+                            startInlineRename(item)
+                        }
+                    )
+                    VSCodeMenuItem(
+                        text = "Delete",
+                        shortcut = "Del",
+                        isDestructive = true,
+                        onClick = {
+                            contextMenuItem = null
+                            onDeleteClick(item)
+                        }
+                    )
                 }
             }
         }

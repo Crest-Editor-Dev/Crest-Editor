@@ -39,7 +39,14 @@ class WorkspaceFileWatcher(
     fun start() {
         if (isWatching) return
         isWatching = true
-        registerObserversRecursively(rootDir)
+        coroutineScope.launch(Dispatchers.IO) {
+            registerObserversRecursively(rootDir)
+        }
+    }
+
+    private fun isExcludedDir(dir: File): Boolean {
+        val name = dir.name
+        return name == ".git" || name == ".svn" || name == ".hg" || name == ".gradle" || name == "build" || name == "node_modules"
     }
 
     fun stop() {
@@ -53,16 +60,20 @@ class WorkspaceFileWatcher(
     }
 
     private fun registerObserversRecursively(dir: File) {
-        if (!dir.exists() || !dir.isDirectory) return
+        if (!isWatching || !dir.exists() || !dir.isDirectory || isExcludedDir(dir)) return
 
         createObserver(dir)?.let {
             it.startWatching()
             synchronized(observers) {
-                observers.add(it)
+                if (isWatching) {
+                    observers.add(it)
+                } else {
+                    runCatching { it.stopWatching() }
+                }
             }
         }
 
-        dir.listFiles()?.filter { it.isDirectory }?.forEach { subDir ->
+        dir.listFiles()?.filter { it.isDirectory && !isExcludedDir(it) }?.forEach { subDir ->
             registerObserversRecursively(subDir)
         }
     }
@@ -96,7 +107,7 @@ class WorkspaceFileWatcher(
 
         // If a new directory was created, attach a watcher to it
         if ((event and FileObserver.CREATE) != 0) {
-            if (targetFile.isDirectory) {
+            if (targetFile.isDirectory && !isExcludedDir(targetFile)) {
                 createObserver(targetFile)?.let {
                     it.startWatching()
                     synchronized(observers) {

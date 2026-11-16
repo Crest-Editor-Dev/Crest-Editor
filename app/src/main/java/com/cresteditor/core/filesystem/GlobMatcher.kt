@@ -93,11 +93,15 @@ object GlobMatcher {
      */
     fun isFileExcluded(file: File, rootDir: File? = null, excludePatterns: Map<String, Boolean>): Boolean {
         if (excludePatterns.isEmpty()) return false
+        val fileName = file.name
+        if (excludePatterns["**/$fileName"] == true || excludePatterns[fileName] == true) {
+            return true
+        }
         val relPath = if (rootDir != null && file.absolutePath.startsWith(rootDir.absolutePath)) {
             file.relativeTo(rootDir).path
         } else {
-            file.name
+            fileName
         }
-        return isExcluded(relPath, excludePatterns) || isExcluded(file.name, excludePatterns)
+        return isExcluded(relPath, excludePatterns) || isExcluded(fileName, excludePatterns)
     }
 }
