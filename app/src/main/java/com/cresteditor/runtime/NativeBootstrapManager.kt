@@ -269,10 +269,13 @@ class NativeBootstrapManager(private val context: Context) {
             val linkFile = File(targetDir, linkRel)
             linkFile.parentFile?.mkdirs()
             if (linkFile.exists()) linkFile.delete()
+            val patchedTarget = target
+                .replace("com.termux", PACKAGE_NAME_CRESTD)
+                .replace("com.zdroid", PACKAGE_NAME_CRESTD)
             try {
-                Os.symlink(target, linkFile.absolutePath)
+                Os.symlink(patchedTarget, linkFile.absolutePath)
             } catch (e: Exception) {
-                AppLogger.w(TAG, "Symlink failed for $target -> ${linkFile.absolutePath}: ${e.message}")
+                AppLogger.w(TAG, "Symlink failed for $patchedTarget -> ${linkFile.absolutePath}: ${e.message}")
             }
         }
     }
