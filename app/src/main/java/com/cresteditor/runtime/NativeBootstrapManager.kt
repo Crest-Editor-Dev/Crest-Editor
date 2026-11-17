@@ -27,7 +27,7 @@ class NativeBootstrapManager(private val context: Context) {
     companion object {
         private const val TAG = "NativeBootstrapManager"
         private const val BOOTSTRAP_URL =
-            "https://github.com/Dylanmurzello/zdroid-bootstrap/releases/latest/download/bootstrap-aarch64.zip"
+            "https://github.com/termux/termux-packages/releases/latest/download/bootstrap-aarch64.zip"
         private const val PACKAGE_NAME_CRESTD = "com.crestd"
         private const val SYMLINKS_ENTRY = "SYMLINKS.txt"
         private const val SYMLINKS_DELIM = "←"
@@ -231,7 +231,9 @@ class NativeBootstrapManager(private val context: Context) {
                         reader.forEachLine { line ->
                             val parts = line.split(SYMLINKS_DELIM)
                             if (parts.size == 2) {
-                                symlinks.add(parts[0] to parts[1])
+                                val target = parts[0]
+                                val linkRel = parts[1].removePrefix("./")
+                                symlinks.add(target to linkRel)
                             }
                         }
                         zis.closeEntry()
