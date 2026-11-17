@@ -145,6 +145,8 @@ This project is licensed under the GNU General Public License v3.0 (GPL-3.0). Se
 
 Contributions are welcome. If you want to improve the editor, fix bugs, or add features, open an issue or submit a pull request with a clear description of the change.
 
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines, reporting issues, and the pull request process.
+
 ## Contact
 
 For project updates and discussions, use the GitHub repository and issue tracker.
