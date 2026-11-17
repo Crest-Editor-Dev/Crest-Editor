@@ -95,6 +95,9 @@ class NativeBootstrapManager(private val context: Context) {
                 // Ensure bash and core utilities have executable permissions
                 ensureExecutablePermissions(prefixDir)
 
+                // Install automated APT patch hook and TMPDIR configuration
+                installAptAutoPatcher()
+
                 TerminalBridgeServer.start(context, filesDir, prefixDir)
                 TerminalBridgeServer.ensureBridgeScriptsInstalled(prefixDir, filesDir)
 
@@ -346,6 +349,74 @@ class NativeBootstrapManager(private val context: Context) {
                     file.setReadable(true, false)
                 }
             }
+        }
+    }
+
+    private fun installAptAutoPatcher() {
+        try {
+            val patchScript = File(binDir, "termux-patch-deb")
+            patchScript.writeText(
+                """
+                #!/data/data/com.crestd/files/usr/bin/bash
+                set -e
+
+                patch_single_deb() {
+                    local deb="${'$'}1"
+                    [ -f "${'$'}deb" ] || return 0
+                    if grep -q "com.termux" "${'$'}deb" 2>/dev/null; then
+                        echo -e "\033[1;34m[Crest Auto-Patch]\033[0m Patching $(basename "${'$'}deb") for com.crestd..."
+                        local tmp
+                        tmp=${'$'}(mktemp -d /data/data/com.crestd/files/usr/tmp/deb_patch.XXXXXX)
+                        (
+                            cd "${'$'}tmp"
+                            busybox ar x "${'$'}deb"
+                            
+                            local data_archive
+                            data_archive=${'$'}(ls data.tar.* 2>/dev/null | head -n 1)
+                            if [ -n "${'$'}data_archive" ]; then
+                                mkdir -p data_out
+                                tar -xf "${'$'}data_archive" --transform='s/com\.termux/com.crestd/g' -C data_out
+                                tar -I "gzip -1" -cf data.tar.gz -C data_out ./data
+                                rm -rf data_out "${'$'}data_archive"
+                            fi
+                            
+                            local control_archive
+                            control_archive=${'$'}(ls control.tar.* 2>/dev/null | head -n 1)
+                            if [ -n "${'$'}control_archive" ]; then
+                                mkdir -p control_out
+                                tar -xf "${'$'}control_archive" -C control_out
+                                sed -i 's/com\.termux/com.crestd/g' control_out/* 2>/dev/null || true
+                                tar -I "gzip -1" -cf control.tar.gz -C control_out .
+                                rm -rf control_out "${'$'}control_archive"
+                            fi
+                            
+                            rm -f "${'$'}deb"
+                            busybox ar r "${'$'}deb" debian-binary control.tar.gz data.tar.gz
+                        )
+                        rm -rf "${'$'}tmp"
+                    fi
+                }
+
+                while read -r file; do
+                    case "${'$'}file" in
+                        *.deb) patch_single_deb "${'$'}file" ;;
+                    esac
+                done
+                """.trimIndent()
+            )
+            patchScript.setExecutable(true, false)
+
+            val aptConfDir = File(prefixDir, "etc/apt/apt.conf.d")
+            if (!aptConfDir.exists()) aptConfDir.mkdirs()
+            val confFile = File(aptConfDir, "00patch-debs")
+            confFile.writeText("DPkg::Pre-Install-Pkgs {\"${patchScript.absolutePath}\";};\n")
+
+            val bashrc = File(homeDir, ".bashrc")
+            if (!bashrc.exists() || !bashrc.readText().contains("TMPDIR")) {
+                bashrc.appendText("\nexport TMPDIR=/data/data/com.crestd/files/usr/tmp\n")
+            }
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "Failed to install APT auto patcher: ${e.message}")
         }
     }
 
