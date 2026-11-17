@@ -101,7 +101,7 @@ class NativeBootstrapManager(private val context: Context) {
                 onStatusUpdate("Native Terminal Ready")
                 return true
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to setup native bootstrap", e)
+                AppLogger.e(TAG, "Failed to setup native bootstrap: ${e.message}")
                 onStatusUpdate("Setup Failed: ${e.message}")
                 return false
             }
