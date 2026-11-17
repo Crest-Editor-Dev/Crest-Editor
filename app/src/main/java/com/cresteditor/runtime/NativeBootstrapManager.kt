@@ -11,6 +11,7 @@ import java.io.*
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 /**
@@ -219,16 +220,18 @@ class NativeBootstrapManager(private val context: Context) {
     ) {
         val symlinks = mutableListOf<Pair<String, String>>()
 
-        FileInputStream(zipFile).use { fis ->
-            ZipInputStream(BufferedInputStream(fis)).use { zis ->
-                var entry: ZipEntry?
-                while (zis.nextEntry.also { entry = it } != null) {
-                    val currentEntry = entry ?: break
-                    val entryName = currentEntry.name
+        ZipFile(zipFile).use { zip ->
+            val total = zip.size()
+            var extracted = 0
+            val entries = zip.entries()
 
-                    if (entryName == SYMLINKS_ENTRY) {
-                        val reader = BufferedReader(InputStreamReader(zis))
-                        reader.forEachLine { line ->
+            while (entries.hasMoreElements()) {
+                val entry = entries.nextElement()
+                val entryName = entry.name
+
+                if (entryName == SYMLINKS_ENTRY) {
+                    zip.getInputStream(entry).bufferedReader().useLines { lines ->
+                        for (line in lines) {
                             val parts = line.split(SYMLINKS_DELIM)
                             if (parts.size == 2) {
                                 val target = parts[0]
@@ -236,20 +239,26 @@ class NativeBootstrapManager(private val context: Context) {
                                 symlinks.add(target to linkRel)
                             }
                         }
-                        zis.closeEntry()
-                        continue
                     }
+                    continue
+                }
 
-                    val outFile = File(targetDir, entryName)
-                    if (currentEntry.isDirectory) {
-                        outFile.mkdirs()
-                    } else {
-                        outFile.parentFile?.mkdirs()
-                        FileOutputStream(outFile).use { fos ->
-                            zis.copyTo(fos)
+                val outFile = File(targetDir, entryName)
+                if (entry.isDirectory) {
+                    outFile.mkdirs()
+                } else {
+                    outFile.parentFile?.mkdirs()
+                    zip.getInputStream(entry).use { input ->
+                        FileOutputStream(outFile).use { output ->
+                            input.copyTo(output)
                         }
                     }
-                    zis.closeEntry()
+                }
+
+                extracted++
+                if (total > 0 && extracted % 200 == 0) {
+                    val percent = (extracted * 100) / total
+                    onStatusUpdate("Extracting Bootstrap: $percent%")
                 }
             }
         }
