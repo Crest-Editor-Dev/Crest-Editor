@@ -51,6 +51,11 @@ import androidx.compose.ui.window.DialogWindowProvider
 import com.cresteditor.core.commands.*
 import com.cresteditor.core.filesystem.GlobMatcher
 import com.cresteditor.core.settings.SettingsManager
+import com.cresteditor.workspace.IndexedFile
+import com.cresteditor.workspace.ProjectFileIndex
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 private val VSCodeQuickInputBg = Color(0xFF252526)
 private val VSCodeQuickInputBorder = Color(0xFF3C3C3C)
@@ -79,6 +84,7 @@ fun VSCodeCommandPalette(
     initialQuery: String = ">",
     commandRegistry: CommandRegistry,
     fileTreeItems: List<FileTreeItem> = emptyList(),
+    projectFileIndex: ProjectFileIndex? = null,
     openTabs: List<CrestTabItem> = emptyList(),
     activeTabId: String = "",
     currentLineCount: Int = 1,
@@ -120,29 +126,173 @@ fun VSCodeCommandPalette(
         QuickAccessMode.resolve(rawQuery)
     }
 
-    // Generate entries based on current mode and query parameter
-    val entries = remember(rawQuery, mode, queryParam, commandRegistry, fileTreeItems, openTabs, currentLineCount, activeExcludeRegexes) {
-        buildQuickPickEntries(
-            mode = mode,
-            param = queryParam,
-            commandRegistry = commandRegistry,
-            fileTreeItems = fileTreeItems,
-            openTabs = openTabs,
-            activeTabId = activeTabId,
-            currentLineCount = currentLineCount,
-            activeExcludeRegexes = activeExcludeRegexes,
-            onCommandExecute = onCommandExecute,
-            onOpenFile = onOpenFile,
-            onNavigateLine = onNavigateLine,
-            onOpenView = onOpenView,
-            onSwitchMode = { newPrefix ->
-                textFieldValue = TextFieldValue(
-                    text = newPrefix,
-                    selection = TextRange(newPrefix.length)
-                )
+    // Async file search states
+    var previousFileQuery by remember { mutableStateOf("") }
+    var candidatePool by remember { mutableStateOf<List<IndexedFile>?>(null) }
+    var asyncFileEntries by remember { mutableStateOf<List<QuickPickEntry>>(emptyList()) }
+
+    // Run file search asynchronously on Dispatchers.Default with intelligent debounce and cancellation
+    LaunchedEffect(rawQuery, mode, queryParam, projectFileIndex, fileTreeItems, openTabs, activeExcludeRegexes) {
+        if (mode != QuickAccessMode.FILES) {
+            candidatePool = null
+            previousFileQuery = ""
+            return@LaunchedEffect
+        }
+
+        val lineSuffixMatch = Regex("^(.*?)(?::(\\d+)(?:[,:](\\d+))?)?$").matchEntire(queryParam)
+        val fileQuery = lineSuffixMatch?.groupValues?.getOrNull(1)?.trim() ?: queryParam.trim()
+        val targetLine = lineSuffixMatch?.groupValues?.getOrNull(2)?.toIntOrNull()
+        val targetCol = lineSuffixMatch?.groupValues?.getOrNull(3)?.toIntOrNull()
+        val openTabIds = openTabs.map { it.id }.toSet()
+
+        if (fileQuery.isEmpty()) {
+            candidatePool = null
+            previousFileQuery = ""
+            val initialResults = mutableListOf<QuickPickEntry>()
+            if (openTabs.isNotEmpty()) {
+                initialResults.add(QuickPickEntry.Header("open editors"))
+                openTabs.forEach { tab ->
+                    initialResults.add(
+                        QuickPickEntry.Item(
+                            id = "tab_${tab.id}",
+                            label = tab.title,
+                            description = tab.id.substringAfterLast('/', ""),
+                            shortcut = "OPEN",
+                            isModified = tab.isModified,
+                            icon = QuickPickIcon.FILE,
+                            onExecute = {
+                                onOpenFile?.invoke(tab.id, targetLine, targetCol)
+                            }
+                        )
+                    )
+                }
             }
-        )
+
+            val defaultFiles: List<Pair<String, String>> = if (projectFileIndex != null) {
+                projectFileIndex.getAllFiles().filter { !openTabIds.contains(it.path) }.take(40).map { it.name to it.path }
+            } else {
+                val list = mutableListOf<Pair<String, String>>()
+                for (item in fileTreeItems) {
+                    if (item.isDirectory || openTabIds.contains(item.path)) continue
+                    if (activeExcludeRegexes.any { it.containsMatchIn(item.path) }) continue
+                    list.add(item.name to item.path)
+                    if (list.size >= 40) break
+                }
+                list
+            }
+
+            if (defaultFiles.isNotEmpty()) {
+                if (openTabs.isNotEmpty()) {
+                    initialResults.add(QuickPickEntry.Header("workspace files"))
+                }
+                defaultFiles.forEach { (name, path) ->
+                    initialResults.add(
+                        QuickPickEntry.Item(
+                            id = "file_$path",
+                            label = name,
+                            description = path,
+                            icon = QuickPickIcon.FILE,
+                            onExecute = {
+                                onOpenFile?.invoke(path, targetLine, targetCol)
+                            }
+                        )
+                    )
+                }
+            }
+
+            asyncFileEntries = initialResults
+        } else {
+            // 40ms intelligent debounce: rapid keystrokes cancel previous jobs immediately
+            delay(40)
+
+            val results = withContext(Dispatchers.Default) {
+                val searchResultsList = mutableListOf<QuickPickEntry>()
+
+                val currentCandidates = if (previousFileQuery.isNotEmpty() &&
+                    fileQuery.startsWith(previousFileQuery) &&
+                    candidatePool != null
+                ) {
+                    candidatePool
+                } else {
+                    null
+                }
+
+                if (projectFileIndex != null) {
+                    val searchResult = projectFileIndex.search(fileQuery, currentCandidates, topK = 50)
+                    candidatePool = searchResult.matchedCandidates
+                    previousFileQuery = fileQuery
+
+                    for (m in searchResult.matches) {
+                        val file = m.file
+                        val isOpen = openTabIds.contains(file.path)
+                        val openTab = if (isOpen) openTabs.find { it.id == file.path } else null
+                        searchResultsList.add(
+                            QuickPickEntry.Item(
+                                id = "search_file_${file.path}",
+                                label = file.name,
+                                description = file.relativePath.ifEmpty { file.path },
+                                shortcut = if (isOpen) "OPEN" else null,
+                                isModified = openTab?.isModified == true,
+                                icon = QuickPickIcon.FILE,
+                                labelMatchIndices = m.matchIndices,
+                                onExecute = {
+                                    onOpenFile?.invoke(file.path, targetLine, targetCol)
+                                }
+                            )
+                        )
+                    }
+                } else {
+                    candidatePool = null
+                    previousFileQuery = fileQuery
+                    val fallback = performFallbackFileSearch(
+                        fileQuery = fileQuery,
+                        fileTreeItems = fileTreeItems,
+                        openTabs = openTabs,
+                        openTabIds = openTabIds,
+                        activeExcludeRegexes = activeExcludeRegexes,
+                        targetLine = targetLine,
+                        targetCol = targetCol,
+                        onOpenFile = onOpenFile
+                    )
+                    searchResultsList.addAll(fallback)
+                }
+
+                searchResultsList
+            }
+
+            asyncFileEntries = results
+        }
     }
+
+    // Static / light modes (commands, view, goto line, help) run synchronously in remember
+    val nonFileEntries = remember(rawQuery, mode, queryParam, commandRegistry, openTabs, currentLineCount) {
+        if (mode != QuickAccessMode.FILES) {
+            buildQuickPickEntries(
+                mode = mode,
+                param = queryParam,
+                commandRegistry = commandRegistry,
+                fileTreeItems = emptyList(),
+                openTabs = openTabs,
+                activeTabId = activeTabId,
+                currentLineCount = currentLineCount,
+                activeExcludeRegexes = emptyList(),
+                onCommandExecute = onCommandExecute,
+                onOpenFile = onOpenFile,
+                onNavigateLine = onNavigateLine,
+                onOpenView = onOpenView,
+                onSwitchMode = { newPrefix ->
+                    textFieldValue = TextFieldValue(
+                        text = newPrefix,
+                        selection = TextRange(newPrefix.length)
+                    )
+                }
+            )
+        } else {
+            emptyList()
+        }
+    }
+
+    val entries = if (mode == QuickAccessMode.FILES) asyncFileEntries else nonFileEntries
 
     // Filter to selectable items only for keyboard arrow navigation
     val selectableItems = remember(entries) {
@@ -756,158 +906,182 @@ private fun buildQuickPickEntries(
         }
 
         QuickAccessMode.FILES -> {
-            // Check for line / column suffix (e.g. filename.js:45 or filename.js:45,10)
             val lineSuffixMatch = Regex("^(.*?)(?::(\\d+)(?:[,:](\\d+))?)?$").matchEntire(param)
             val fileQuery = lineSuffixMatch?.groupValues?.getOrNull(1)?.trim() ?: param.trim()
             val targetLine = lineSuffixMatch?.groupValues?.getOrNull(2)?.toIntOrNull()
             val targetCol = lineSuffixMatch?.groupValues?.getOrNull(3)?.toIntOrNull()
             val openTabIds = openTabs.map { it.id }.toSet()
 
-            if (fileQuery.isEmpty()) {
-                // 1. Show open editors first (instant O(openTabs))
-                if (openTabs.isNotEmpty()) {
-                    result.add(QuickPickEntry.Header("open editors"))
-                    openTabs.forEach { tab ->
-                        result.add(
-                            QuickPickEntry.Item(
-                                id = "tab_${tab.id}",
-                                label = tab.title,
-                                description = tab.id.substringAfterLast('/', ""),
-                                shortcut = "OPEN",
-                                isModified = tab.isModified,
-                                icon = QuickPickIcon.FILE,
-                                onExecute = {
-                                    onOpenFile?.invoke(tab.id, targetLine, targetCol)
-                                }
-                            )
-                        )
-                    }
-                }
-
-                // 2. Followed by workspace files (with early exit after 40 items)
-                val workspaceFiles = mutableListOf<FileTreeItem>()
-                for (item in fileTreeItems) {
-                    if (item.isDirectory) continue
-                    val path = item.path
-                    if (openTabIds.contains(path)) continue
-
-                    if (activeExcludeRegexes.isNotEmpty()) {
-                        var isExcluded = false
-                        for (regex in activeExcludeRegexes) {
-                            if (regex.containsMatchIn(path)) {
-                                isExcluded = true
-                                break
-                            }
-                        }
-                        if (isExcluded) continue
-                    }
-
-                    workspaceFiles.add(item)
-                    if (workspaceFiles.size >= 40) break // Early break avoids scanning tens of thousands of files!
-                }
-
-                if (workspaceFiles.isNotEmpty()) {
-                    if (openTabs.isNotEmpty()) {
-                        result.add(QuickPickEntry.Header("workspace files"))
-                    }
-                    workspaceFiles.forEach { file ->
-                        result.add(
-                            QuickPickEntry.Item(
-                                id = "file_${file.path}",
-                                label = file.name,
-                                description = file.path,
-                                icon = QuickPickIcon.FILE,
-                                onExecute = {
-                                    onOpenFile?.invoke(file.path, targetLine, targetCol)
-                                }
-                            )
-                        )
-                    }
-                }
-            } else {
-                val queryLower = fileQuery.lowercase()
-                val queryHasSlash = queryLower.contains('/')
-
-                data class ScoredFile(
-                    val file: FileTreeItem,
-                    val isOpen: Boolean,
-                    val isModified: Boolean,
-                    val score: Int,
-                    val labelIndices: List<Int>
-                )
-                val scored = mutableListOf<ScoredFile>()
-
-                for (file in fileTreeItems) {
-                    if (file.isDirectory) continue
-                    val nameLower = file.name.lowercase()
-
-                    // Fast character matching check: skip 99% of files in primitive loops
-                    val matchesDirectly = nameLower.contains(queryLower) || (queryHasSlash && file.path.lowercase().contains(queryLower))
-                    if (!matchesDirectly) {
-                        var qI = 0
-                        for (cI in nameLower.indices) {
-                            if (qI < queryLower.length && nameLower[cI] == queryLower[qI]) {
-                                qI++
-                            }
-                        }
-                        if (qI < queryLower.length) continue
-                    }
-
-                    val path = file.path
-                    val isOpen = openTabIds.contains(path)
-
-                    // Only run exclude regexes on files that matched the query!
-                    if (!isOpen && activeExcludeRegexes.isNotEmpty()) {
-                        var isExcluded = false
-                        for (regex in activeExcludeRegexes) {
-                            if (regex.containsMatchIn(path)) {
-                                isExcluded = true
-                                break
-                            }
-                        }
-                        if (isExcluded) continue
-                    }
-
-                    val openTab = if (isOpen) openTabs.find { it.id == path } else null
-                    val isModified = openTab?.isModified == true
-
-                    val nameMatch = QuickAccessFuzzyScorer.score(file.name, fileQuery)
-                    if (nameMatch != null) {
-                        val finalScore = nameMatch.score + (if (isOpen) 200 else 0)
-                        scored.add(ScoredFile(file, isOpen, isModified, finalScore, nameMatch.matchIndices))
-                    } else {
-                        val pathMatch = QuickAccessFuzzyScorer.score(file.path, fileQuery)
-                        if (pathMatch != null) {
-                            val finalScore = pathMatch.score - 100 + (if (isOpen) 200 else 0)
-                            scored.add(ScoredFile(file, isOpen, isModified, finalScore, emptyList()))
-                        }
-                    }
-
-                    if (scored.size >= 150) break // Cap search results to avoid massive sorts
-                }
-
-                scored.sortByDescending { it.score }
-                scored.take(50).forEach { sf ->
-                    result.add(
-                        QuickPickEntry.Item(
-                            id = "search_file_${sf.file.path}",
-                            label = sf.file.name,
-                            description = sf.file.path,
-                            shortcut = if (sf.isOpen) "OPEN" else null,
-                            isModified = sf.isModified,
-                            icon = QuickPickIcon.FILE,
-                            labelMatchIndices = sf.labelIndices,
-                            onExecute = {
-                                onOpenFile?.invoke(sf.file.path, targetLine, targetCol)
-                            }
-                        )
-                    )
-                }
-            }
+            return performFallbackFileSearch(
+                fileQuery = fileQuery,
+                fileTreeItems = fileTreeItems,
+                openTabs = openTabs,
+                openTabIds = openTabIds,
+                activeExcludeRegexes = activeExcludeRegexes,
+                targetLine = targetLine,
+                targetCol = targetCol,
+                onOpenFile = onOpenFile
+            )
         }
     }
 
     return result
+}
+
+/**
+ * Fallback file search with bounded Top-K priority ranking for when ProjectFileIndex is not available.
+ */
+private fun performFallbackFileSearch(
+    fileQuery: String,
+    fileTreeItems: List<FileTreeItem>,
+    openTabs: List<CrestTabItem>,
+    openTabIds: Set<String>,
+    activeExcludeRegexes: List<Regex>,
+    targetLine: Int?,
+    targetCol: Int?,
+    onOpenFile: ((path: String, line: Int?, col: Int?) -> Unit)?
+): List<QuickPickEntry> {
+    val result = mutableListOf<QuickPickEntry>()
+
+    if (fileQuery.isEmpty()) {
+        if (openTabs.isNotEmpty()) {
+            result.add(QuickPickEntry.Header("open editors"))
+            openTabs.forEach { tab ->
+                result.add(
+                    QuickPickEntry.Item(
+                        id = "tab_${tab.id}",
+                        label = tab.title,
+                        description = tab.id.substringAfterLast('/', ""),
+                        shortcut = "OPEN",
+                        isModified = tab.isModified,
+                        icon = QuickPickIcon.FILE,
+                        onExecute = {
+                            onOpenFile?.invoke(tab.id, targetLine, targetCol)
+                        }
+                    )
+                )
+            }
+        }
+
+        val workspaceFiles = mutableListOf<FileTreeItem>()
+        for (item in fileTreeItems) {
+            if (item.isDirectory) continue
+            val path = item.path
+            if (openTabIds.contains(path)) continue
+
+            if (activeExcludeRegexes.isNotEmpty()) {
+                if (activeExcludeRegexes.any { it.containsMatchIn(path) }) continue
+            }
+
+            workspaceFiles.add(item)
+            if (workspaceFiles.size >= 40) break
+        }
+
+        if (workspaceFiles.isNotEmpty()) {
+            if (openTabs.isNotEmpty()) {
+                result.add(QuickPickEntry.Header("workspace files"))
+            }
+            workspaceFiles.forEach { file ->
+                result.add(
+                    QuickPickEntry.Item(
+                        id = "file_${file.path}",
+                        label = file.name,
+                        description = file.path,
+                        icon = QuickPickIcon.FILE,
+                        onExecute = {
+                            onOpenFile?.invoke(file.path, targetLine, targetCol)
+                        }
+                    )
+                )
+            }
+        }
+        return result
+    }
+
+    val queryLower = fileQuery.lowercase()
+    val queryHasSlash = queryLower.contains('/')
+    val firstChar = queryLower[0]
+    val queryLen = queryLower.length
+
+    data class ScoredFallbackFile(
+        val file: FileTreeItem,
+        val isOpen: Boolean,
+        val isModified: Boolean,
+        val score: Int,
+        val labelIndices: List<Int>
+    )
+
+    val minHeap = java.util.PriorityQueue<ScoredFallbackFile>(51, compareBy { it.score })
+
+    for (file in fileTreeItems) {
+        if (file.isDirectory) continue
+        val nameLower = file.name.lowercase()
+        val pathLower = if (queryHasSlash) file.path.lowercase() else ""
+        val targetLower = if (queryHasSlash) pathLower else nameLower
+
+        if (targetLower.indexOf(firstChar) < 0) continue
+
+        var qI = 0
+        var tI = 0
+        val tLen = targetLower.length
+        while (qI < queryLen && tI < tLen) {
+            if (targetLower[tI] == queryLower[qI]) qI++
+            tI++
+        }
+        if (qI < queryLen) continue
+
+        val path = file.path
+        val isOpen = openTabIds.contains(path)
+
+        if (!isOpen && activeExcludeRegexes.isNotEmpty()) {
+            if (activeExcludeRegexes.any { it.containsMatchIn(path) }) continue
+        }
+
+        val openTab = if (isOpen) openTabs.find { it.id == path } else null
+        val isModified = openTab?.isModified == true
+
+        val nameMatch = QuickAccessFuzzyScorer.score(file.name, fileQuery)
+        val score: Int
+        val indices: List<Int>
+        if (nameMatch != null) {
+            score = nameMatch.score + (if (isOpen) 200 else 0)
+            indices = nameMatch.matchIndices
+        } else {
+            val pathMatch = QuickAccessFuzzyScorer.score(file.path, fileQuery)
+            if (pathMatch != null) {
+                score = pathMatch.score - 100 + (if (isOpen) 200 else 0)
+                indices = emptyList()
+            } else {
+                continue
+            }
+        }
+
+        minHeap.offer(ScoredFallbackFile(file, isOpen, isModified, score, indices))
+        if (minHeap.size > 50) {
+            minHeap.poll()
+        }
+    }
+
+    val top = mutableListOf<ScoredFallbackFile>()
+    while (minHeap.isNotEmpty()) {
+        top.add(minHeap.poll()!!)
+    }
+    top.reverse()
+
+    return top.map { sf ->
+        QuickPickEntry.Item(
+            id = "search_file_${sf.file.path}",
+            label = sf.file.name,
+            description = sf.file.path,
+            shortcut = if (sf.isOpen) "OPEN" else null,
+            isModified = sf.isModified,
+            icon = QuickPickIcon.FILE,
+            labelMatchIndices = sf.labelIndices,
+            onExecute = {
+                onOpenFile?.invoke(sf.file.path, targetLine, targetCol)
+            }
+        )
+    }
 }
 
 /**

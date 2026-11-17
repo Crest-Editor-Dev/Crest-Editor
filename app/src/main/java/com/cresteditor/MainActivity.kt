@@ -554,6 +554,7 @@ class MainActivity : ComponentActivity() {
                         initialQuery = commandPaletteInitialQuery,
                         commandRegistry = commandRegistry,
                         fileTreeItems = fileTreeItems,
+                        projectFileIndex = viewModel.projectFileIndex,
                         openTabs = openTabs,
                         activeTabId = activeTabId,
                         currentLineCount = currentLineCount,

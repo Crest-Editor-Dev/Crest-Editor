@@ -4,9 +4,11 @@ import android.content.Context
 import android.webkit.WebView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cresteditor.core.filesystem.GitignoreMatcher
 import com.cresteditor.editor.MonacoBridge
 import com.cresteditor.ui.components.CrestTabItem
 import com.cresteditor.ui.components.FileTreeItem
+import com.cresteditor.workspace.ProjectFileIndex
 import com.cresteditor.workspace.WorkspaceManager
 import com.cresteditor.workspace.WorkspaceFileWatcher
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +21,8 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class MainViewModel : ViewModel() {
+
+    val projectFileIndex = ProjectFileIndex()
 
     private val _fileTreeItems = MutableStateFlow<List<FileTreeItem>>(emptyList())
     val fileTreeItems: StateFlow<List<FileTreeItem>> = _fileTreeItems.asStateFlow()
@@ -58,6 +62,22 @@ class MainViewModel : ViewModel() {
             val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
             val settingsManager = com.cresteditor.core.settings.SettingsManager(context)
             val filesExclude = settingsManager.getFilesExclude()
+            val gitignoreMatcher = if (settingsManager.isSearchUseIgnoreFiles()) {
+                GitignoreMatcher.fromDirectory(workspaceDir)
+            } else {
+                GitignoreMatcher.EMPTY
+            }
+            val effectiveSearchExcludes = if (settingsManager.isSearchUseIgnoreFiles()) {
+                settingsManager.getEffectiveSearchExcludes()
+            } else {
+                emptyMap()
+            }
+
+            // Index project files asynchronously in background without blocking editor launch
+            launch {
+                projectFileIndex.indexWorkspace(workspaceDir, effectiveSearchExcludes, gitignoreMatcher)
+            }
+
             val items = WorkspaceManager.listFilesRecursively(workspaceDir, 0, filesExclude, workspaceDir)
             _fileTreeItems.value = items
 
@@ -97,6 +117,7 @@ class MainViewModel : ViewModel() {
     }
 
     private fun handleExternalFileDeleted(file: File) {
+        projectFileIndex.removeFile(file)
         val path = file.absolutePath
         val dirPrefix = path + File.separator
         var marked = false
@@ -162,6 +183,21 @@ class MainViewModel : ViewModel() {
             val workspaceDir = WorkspaceManager.getWorkspaceDir(context)
             val settingsManager = com.cresteditor.core.settings.SettingsManager(context)
             val filesExclude = settingsManager.getFilesExclude()
+            val gitignoreMatcher = if (settingsManager.isSearchUseIgnoreFiles()) {
+                GitignoreMatcher.fromDirectory(workspaceDir)
+            } else {
+                GitignoreMatcher.EMPTY
+            }
+            val effectiveSearchExcludes = if (settingsManager.isSearchUseIgnoreFiles()) {
+                settingsManager.getEffectiveSearchExcludes()
+            } else {
+                emptyMap()
+            }
+
+            launch {
+                projectFileIndex.indexWorkspace(workspaceDir, effectiveSearchExcludes, gitignoreMatcher)
+            }
+
             _fileTreeItems.value = WorkspaceManager.listFilesRecursively(workspaceDir, 0, filesExclude, workspaceDir)
         }
     }
@@ -296,6 +332,10 @@ class MainViewModel : ViewModel() {
             }
 
             result.onSuccess { createdFile ->
+                if (!createdFile.isDirectory) {
+                    val rootDir = WorkspaceManager.getWorkspaceDir(context)
+                    projectFileIndex.addFile(createdFile, rootDir)
+                }
                 refreshWorkspace(context)
                 if (!createdFile.isDirectory) {
                     openFile(createdFile, webView)
@@ -328,6 +368,7 @@ class MainViewModel : ViewModel() {
             val isDir = file.isDirectory
             val success = if (isDir) file.deleteRecursively() else file.delete()
             if (success) {
+                projectFileIndex.removeFile(file)
                 val matchingTab = _openTabs.value.find { it.id == path }
                 if (matchingTab != null) {
                     closeTab(path, webView)
@@ -362,6 +403,10 @@ class MainViewModel : ViewModel() {
         viewModelScope.launch {
             val result = WorkspaceManager.renameFile(oldFile, trimmed)
             result.onSuccess { newFile ->
+                if (!newFile.isDirectory) {
+                    val rootDir = WorkspaceManager.getWorkspaceDir(context)
+                    projectFileIndex.renameFile(oldFile, newFile, rootDir)
+                }
                 applyItemRenamed(oldFile, newFile, webView)
                 refreshWorkspace(context)
             }.onFailure { ex ->
