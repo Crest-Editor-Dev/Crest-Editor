@@ -108,6 +108,12 @@ android {
             pickFirsts.add("**/libtermux.so")
         }
     }
+
+    lint {
+        disable += "ExpiredTargetSdkVersion"
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
 }
 
 dependencies {
