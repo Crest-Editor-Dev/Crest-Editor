@@ -49,7 +49,7 @@ import com.cresteditor.icons.Codicons
 import com.termux.terminal.TerminalSession
 import com.termux.view.TerminalView
 import com.cresteditor.runtime.NativeTerminalClient
-import com.cresteditor.runtime.RootfsManager
+import com.cresteditor.runtime.NativeBootstrapManager
 import com.cresteditor.runtime.TerminalService
 import com.cresteditor.runtime.TerminalSessionManager
 
@@ -83,7 +83,7 @@ fun TerminalScreen(
     var terminalViewRef by remember { mutableStateOf<TerminalView?>(null) }
     var clientRef by remember { mutableStateOf<NativeTerminalClient?>(null) }
 
-    val rootfsManager = remember { RootfsManager(context) }
+    val bootstrapManager = remember { NativeBootstrapManager(context) }
 
     // State for VS Code Splitter & Maximize
     var panelHeightFraction by remember { mutableFloatStateOf(0.40f) } // Exact VS Code 40% default!

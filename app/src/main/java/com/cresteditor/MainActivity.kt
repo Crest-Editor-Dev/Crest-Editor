@@ -41,7 +41,7 @@ import com.cresteditor.core.permission.StoragePermissionHelper
 import com.cresteditor.core.platform.KeyboardHelper
 import com.cresteditor.core.settings.SettingsManager
 import com.cresteditor.editor.MonacoBridge
-import com.cresteditor.runtime.RootfsManager
+import com.cresteditor.runtime.NativeBootstrapManager
 import com.cresteditor.runtime.TerminalSessionManager
 import com.cresteditor.ui.MainViewModel
 import com.cresteditor.ui.TerminalScreen
@@ -58,7 +58,7 @@ enum class ActiveFocus { NONE, MONACO, TERMINAL }
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var rootfsManager: RootfsManager
+    private lateinit var bootstrapManager: NativeBootstrapManager
     private lateinit var settingsManager: SettingsManager
     private var webView: WebView? = null
     private var onToggleCommandPalette: ((initialQuery: String) -> Unit)? = null
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        rootfsManager = RootfsManager(this)
+        bootstrapManager = NativeBootstrapManager(this)
         settingsManager = SettingsManager(applicationContext)
 
         setContent {

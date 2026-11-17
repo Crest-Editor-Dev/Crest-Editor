@@ -31,7 +31,7 @@ object TerminalSessionManager {
         val existingSession = activeSession
         if (existingSession != null && existingSession.isRunning) {
             Log.d(TAG, "Reattaching to existing active TerminalSession")
-            onStatusUpdate("Void Linux Active")
+            onStatusUpdate("Native Terminal Active")
             onSessionReady(existingSession)
             return
         }
@@ -42,12 +42,12 @@ object TerminalSessionManager {
         }
 
         isInitializing = true
-        onStatusUpdate("Initializing Void Linux Environment...")
+        onStatusUpdate("Initializing Native Environment...")
 
         thread {
             try {
-                val rootfsManager = RootfsManager(context)
-                val ready = rootfsManager.setupRootfsEnvironment { status ->
+                val bootstrapManager = NativeBootstrapManager(context)
+                val ready = bootstrapManager.setupEnvironment { status ->
                     onStatusUpdate(status)
                 }
 
@@ -55,21 +55,21 @@ object TerminalSessionManager {
                     val client = NativeTerminalClient(context, onSessionFinishedCallback = {
                         activeSession = null
                         activeClient = null
-                        onStatusUpdate("Void Linux Process Terminated")
+                        onStatusUpdate("Terminal Process Terminated")
                     }).apply {
                         onModifiersChanged = this@TerminalSessionManager.onModifiersChanged
                     }
-                    val session = rootfsManager.createTerminalSession(client, initialPath)
+                    val session = bootstrapManager.createTerminalSession(client, initialPath)
 
                     activeClient = client
                     activeSession = session
                     isInitializing = false
 
-                    onStatusUpdate("Void Linux Active")
+                    onStatusUpdate("Native Terminal Active")
                     onSessionReady(session)
                 } else {
                     isInitializing = false
-                    onStatusUpdate("Void Linux Setup Failed")
+                    onStatusUpdate("Native Setup Failed")
                 }
             } catch (e: Exception) {
                 isInitializing = false
