@@ -95,8 +95,8 @@ class RootfsManager(private val context: Context) {
             makeExecutable(File(filesDir, "init-alpine.sh"))
             makeExecutable(File(filesDir, "setup-alpine.sh"))
 
-            // 2. Set up PRoot native binaries
-            onProgress("Setting up PRoot execution engine...")
+            // 2. Set up Crest-Chroot native engine
+            onProgress("Setting up Crest-Chroot execution engine...")
             copyNativeBinaries(arch)
 
             // 3. Check if already installed and validated
@@ -648,7 +648,7 @@ class RootfsManager(private val context: Context) {
     private fun copyNativeBinaries(arch: String) {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val nativeLibsDir = "alpine/$arch/libs"
-        val nativeLibs = arrayOf("libproot-xed.so", "libproot.so", "libtalloc.so")
+        val nativeLibs = arrayOf("libcrest-chroot.so")
 
         for (libName in nativeLibs) {
             val nativeFile = File(nativeDir, libName)
@@ -671,27 +671,6 @@ class RootfsManager(private val context: Context) {
                     Log.w(TAG, "Asset copy skipped for $libName: ${e.message}")
                 }
             }
-        }
-
-        // Create libtalloc.so.2 link for Android dynamic linker
-        try {
-            val talloc2 = File(filesDir, "libtalloc.so.2")
-            val talloc1 = File(filesDir, "libtalloc.so")
-            if (talloc1.exists()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    try { Files.deleteIfExists(talloc2.toPath()) } catch (_: Exception) {}
-                    try {
-                        Files.createSymbolicLink(talloc2.toPath(), Paths.get("libtalloc.so"))
-                    } catch (_: Exception) {
-                        talloc1.copyTo(talloc2, overwrite = true)
-                    }
-                } else {
-                    talloc1.copyTo(talloc2, overwrite = true)
-                }
-                makeExecutable(talloc2)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to create libtalloc.so.2 link: ${e.message}")
         }
     }
 
@@ -723,20 +702,26 @@ class RootfsManager(private val context: Context) {
     ): com.termux.terminal.TerminalSession {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val filesPath = filesDir.absolutePath
-        
-        val prootBinInNative = File(nativeDir, "libproot-xed.so").takeIf { it.exists() }?.absolutePath
-            ?: File(nativeDir, "libproot.so").takeIf { it.exists() }?.absolutePath
 
-        var prootBinInFiles = File(filesDir, "libproot-xed.so").takeIf { it.exists() }?.absolutePath
-            ?: File(filesDir, "libproot.so").takeIf { it.exists() }?.absolutePath
-
-        if (prootBinInNative == null && prootBinInFiles == null) {
-            copyNativeBinaries("arm64")
-            prootBinInFiles = File(filesDir, "libproot-xed.so").takeIf { it.exists() }?.absolutePath
-                ?: File(filesDir, "libproot.so").takeIf { it.exists() }?.absolutePath
+        // Ensure init scripts are present and up to date
+        try {
+            copyAssetFile("alpine/init-sandbox.sh", File(filesDir, "init-sandbox.sh"))
+            makeExecutable(File(filesDir, "init-sandbox.sh"))
+            copyAssetFile("alpine/init-alpine.sh", File(filesDir, "init-alpine.sh"))
+            makeExecutable(File(filesDir, "init-alpine.sh"))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed refreshing init scripts: ${e.message}")
         }
 
-        val prootBin = prootBinInNative ?: prootBinInFiles ?: File(filesDir, "libproot-xed.so").absolutePath
+        val chrootBinInNative = File(nativeDir, "libcrest-chroot.so").takeIf { it.exists() }?.absolutePath
+        var chrootBinInFiles = File(filesDir, "libcrest-chroot.so").takeIf { it.exists() }?.absolutePath
+
+        if (chrootBinInNative == null && chrootBinInFiles == null) {
+            copyNativeBinaries(getArchName())
+            chrootBinInFiles = File(filesDir, "libcrest-chroot.so").takeIf { it.exists() }?.absolutePath
+        }
+
+        val crestChrootBin = chrootBinInNative ?: chrootBinInFiles ?: File(filesDir, "libcrest-chroot.so").absolutePath
         val initSandboxScript = File(filesDir, "init-sandbox.sh").absolutePath
 
         val publicDir = File(filesDir, "public")
@@ -764,7 +749,7 @@ class RootfsManager(private val context: Context) {
             "NATIVE_DIR=$nativeDir",
             "HOME=/public",
             "TERM=xterm-256color",
-            "PROOT=$prootBin",
+            "CREST_CHROOT_BIN=$crestChrootBin",
             "LD_LIBRARY_PATH=$filesPath:$nativeDir",
             "INITIAL_CWD=${normalizePath(workingDir.absolutePath)}",
             "CREST_BRIDGE_PORT=${TerminalBridgeServer.activePort}"
@@ -818,96 +803,80 @@ class RootfsManager(private val context: Context) {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val filesPath = filesDir.absolutePath
 
-        val prootBinInNative = File(nativeDir, "libproot-xed.so").takeIf { it.exists() }?.absolutePath
-            ?: File(nativeDir, "libproot.so").takeIf { it.exists() }?.absolutePath
+        val chrootBinInNative = File(nativeDir, "libcrest-chroot.so").takeIf { it.exists() }?.absolutePath
+        var chrootBinInFiles = File(filesDir, "libcrest-chroot.so").takeIf { it.exists() }?.absolutePath
 
-        var prootBinInFiles = File(filesDir, "libproot-xed.so").takeIf { it.exists() }?.absolutePath
-            ?: File(filesDir, "libproot.so").takeIf { it.exists() }?.absolutePath
-
-        if (prootBinInNative == null && prootBinInFiles == null) {
+        if (chrootBinInNative == null && chrootBinInFiles == null) {
             copyNativeBinaries(getArchName())
-            prootBinInFiles = File(filesDir, "libproot-xed.so").takeIf { it.exists() }?.absolutePath
-                ?: File(filesDir, "libproot.so").takeIf { it.exists() }?.absolutePath
+            chrootBinInFiles = File(filesDir, "libcrest-chroot.so").takeIf { it.exists() }?.absolutePath
         }
 
-        val prootBin = prootBinInNative ?: prootBinInFiles ?: File(filesDir, "libproot-xed.so").absolutePath
-        val prootLoader = File(nativeDir, "libproot.so").takeIf { it.exists() }?.absolutePath
-            ?: File(filesDir, "libproot.so").absolutePath
-        val prootLoader32 = File(nativeDir, "libproot32.so").takeIf { it.exists() }?.absolutePath
-            ?: File(filesDir, "libproot32.so").absolutePath
+        val crestChrootBin = chrootBinInNative ?: chrootBinInFiles ?: File(filesDir, "libcrest-chroot.so").absolutePath
 
-        val linker = if (File("/system/bin/linker64").exists()) "/system/bin/linker64" else "/system/bin/linker"
+        val cmd = mutableListOf<String>()
+        cmd.add(crestChrootBin)
+        cmd.add("-u")
+        cmd.add("-l")
 
-        val prootExec = if (prootBin.startsWith("/data/app/")) {
-            listOf(prootBin)
-        } else {
-            listOf(linker, prootBin)
-        }
-
-        val rawSysMounts = mutableListOf<String>()
-        val sysMountArgs = mutableListOf<String>()
+        // Bind existing system mounts
         val systemPaths = arrayOf(
             "/apex", "/odm", "/product", "/system", "/system_ext", "/vendor",
-            "/proc", "/sys", "/dev", "/linkerconfig/ld.config.txt"
+            "/linkerconfig/ld.config.txt"
         )
         for (mnt in systemPaths) {
             if (File(mnt).exists()) {
-                rawSysMounts.add(mnt)
-                sysMountArgs.add("-b")
-                sysMountArgs.add(mnt)
+                cmd.add("-b")
+                cmd.add("$mnt:$mnt")
             }
         }
 
-        ensureMountPointsExist(rawSysMounts)
-
-        val storageBindings = mutableListOf<String>()
+        // Storage mounts
         val emulated0 = File("/storage/emulated/0")
         if (emulated0.exists()) {
-            storageBindings.addAll(listOf("-b", "/storage/emulated/0:/sdcard", "-b", "/storage/emulated/0"))
-        } else {
-            storageBindings.addAll(listOf("-b", "/sdcard"))
+            cmd.addAll(listOf("-b", "/storage/emulated/0:/sdcard", "-b", "/storage/emulated/0:/storage/emulated/0"))
+        } else if (File("/sdcard").exists()) {
+            cmd.addAll(listOf("-b", "/sdcard:/sdcard"))
         }
         val storageDir = File("/storage")
         if (storageDir.exists()) {
-            storageBindings.addAll(listOf("-b", "/storage"))
+            cmd.addAll(listOf("-b", "/storage:/storage"))
         }
 
-        val cmd = mutableListOf<String>()
-        cmd.addAll(prootExec)
-        cmd.add("--kill-on-exit")
-        cmd.addAll(storageBindings)
+        // App paths
         cmd.addAll(listOf(
-            "-b", "/mnt",
-            "-b", "/data",
-            "-b", filesPath,
+            "-b", "$filesPath:$filesPath",
             "-b", "$filesPath:/files",
-            "-b", nativeDir,
-            "-b", "${rootfsDir.absolutePath}/tmp/shm:/dev/shm"
+            "-b", "$filesPath/public:/public",
+            "-b", "$filesPath/public:/home",
+            "-b", "$filesPath/public:/root"
         ))
-        cmd.addAll(sysMountArgs)
+        if (File(nativeDir).exists()) {
+            cmd.addAll(listOf("-b", "$nativeDir:$nativeDir"))
+        }
+        val shmDir = File(rootfsDir, "tmp/shm")
+        if (shmDir.exists()) {
+            cmd.addAll(listOf("-b", "${shmDir.absolutePath}:/dev/shm"))
+        }
+
+        // Environment
         cmd.addAll(listOf(
-            "-r", rootfsDir.absolutePath,
-            "-0",
-            "--link2symlink",
-            "--sysvipc",
-            "-L"
+            "-E", "PREFIX=$filesPath",
+            "-E", "HOME=/root",
+            "-E", "TERM=xterm-256color",
+            "-E", "TMPDIR=/tmp",
+            "-E", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
         ))
 
+        // Rootfs & command
+        cmd.add(rootfsDir.absolutePath)
         cmd.addAll(commandInRootfs)
 
         val pb = ProcessBuilder(cmd)
         val env = pb.environment()
-        env["PATH"] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
         env["PREFIX"] = filesPath
         env["NATIVE_DIR"] = nativeDir
         env["HOME"] = "/root"
         env["TERM"] = "xterm-256color"
-        env["PROOT_TMP_DIR"] = "$filesPath/tmp"
-        env["PROOT_LOADER"] = prootLoader
-        env["PROOT_LOADER32"] = prootLoader32
-        env["PROOT"] = prootBin
-        env["LD_LIBRARY_PATH"] = "$filesPath:$nativeDir"
-
         return pb
     }
 

@@ -1,3 +1,4 @@
+#!/system/bin/sh
 export LD_LIBRARY_PATH=$PREFIX
 
 ROOTFS_DIR="$PREFIX/rootfs"
@@ -9,100 +10,6 @@ mkdir -p "$PREFIX/tmp"
 mkdir -p "$ROOTFS_DIR/tmp"
 mkdir -p "$ROOTFS_DIR/tmp/shm"
 mkdir -p "$PREFIX/public"
-
-export PROOT_TMP_DIR=$PREFIX/tmp
-
-if [ -f "$NATIVE_DIR/libproot.so" ]; then
-    export PROOT_LOADER="$NATIVE_DIR/libproot.so"
-elif [ -f "$PREFIX/libproot.so" ]; then
-    export PROOT_LOADER="$PREFIX/libproot.so"
-fi
-
-if [ -f "$NATIVE_DIR/libproot32.so" ]; then
-    export PROOT_LOADER32="$NATIVE_DIR/libproot32.so"
-elif [ -f "$PREFIX/libproot32.so" ]; then
-    export PROOT_LOADER32="$PREFIX/libproot32.so"
-fi
-
-if [ -f "$NATIVE_DIR/libproot-xed.so" ]; then
-    export PROOT="$NATIVE_DIR/libproot-xed.so"
-elif [ -f "$PREFIX/libproot-xed.so" ]; then
-    export PROOT="$PREFIX/libproot-xed.so"
-fi
-
-# Ensure libtalloc.so.2 link is created for legacy fallbacks if needed
-if [ -e "$PREFIX/libtalloc.so.2" ] || [ -L "$PREFIX/libtalloc.so.2" ]; then
-    rm -f "$PREFIX/libtalloc.so.2" 2>/dev/null || true
-fi
-
-if [ -f "$PREFIX/libtalloc.so" ]; then
-    ln -s "$PREFIX/libtalloc.so" "$PREFIX/libtalloc.so.2" 2>/dev/null || true
-elif [ -f "$NATIVE_DIR/libtalloc.so" ]; then
-    ln -s "$NATIVE_DIR/libtalloc.so" "$PREFIX/libtalloc.so.2" 2>/dev/null || true
-fi
-
-ARGS="--kill-on-exit"
-
-for system_mnt in /apex /odm /product /system /system_ext /vendor /linkerconfig/ld.config.txt /linkerconfig/com.android.art/ld.config.txt /plat_property_contexts /property_contexts; do
- if [ -e "$system_mnt" ]; then
-  system_mnt=$(readlink -f "$system_mnt" 2>/dev/null || echo "$system_mnt")
-  ARGS="$ARGS -b ${system_mnt}"
- fi
-done
-
-unset system_mnt
-
-if [ -d "/storage/emulated/0" ]; then
-  ARGS="$ARGS -b /storage/emulated/0:/sdcard"
-  ARGS="$ARGS -b /storage/emulated/0"
-elif [ -e "/sdcard" ]; then
-  ARGS="$ARGS -b /sdcard"
-fi
-if [ -d "/storage" ]; then
-  ARGS="$ARGS -b /storage"
-fi
-ARGS="$ARGS -b /dev"
-ARGS="$ARGS -b /data"
-ARGS="$ARGS -b /dev/urandom:/dev/random"
-ARGS="$ARGS -b /proc"
-ARGS="$ARGS -b /sys"
-ARGS="$ARGS -b $PREFIX"
-ARGS="$ARGS -b $PREFIX:/files"
-ARGS="$ARGS -b $NATIVE_DIR"
-ARGS="$ARGS -b $PREFIX/public:/public"
-ARGS="$ARGS -b $PREFIX/public:/home"
-ARGS="$ARGS -b $PREFIX/public:/root"
-if [ -n "$INITIAL_CWD" ] && [ -d "$INITIAL_CWD" ]; then
-    ARGS="$ARGS -w $INITIAL_CWD"
-else
-    ARGS="$ARGS -w /public"
-fi
-ARGS="$ARGS -b $ROOTFS_DIR/tmp/shm:/dev/shm"
-
-
-if [ -e "/proc/self/fd" ]; then
-  ARGS="$ARGS -b /proc/self/fd:/dev/fd"
-fi
-
-if [ -e "/proc/self/fd/0" ]; then
-  ARGS="$ARGS -b /proc/self/fd/0:/dev/stdin"
-fi
-
-if [ -e "/proc/self/fd/1" ]; then
-  ARGS="$ARGS -b /proc/self/fd/1:/dev/stdout"
-fi
-
-if [ -e "/proc/self/fd/2" ]; then
-  ARGS="$ARGS -b /proc/self/fd/2:/dev/stderr"
-fi
-
-
-ARGS="$ARGS -r $ROOTFS_DIR"
-ARGS="$ARGS -0"
-ARGS="$ARGS --link2symlink"
-ARGS="$ARGS --sysvipc"
-ARGS="$ARGS -L"
-
 
 FAILSAFE=false
 INSTALLING=false
@@ -118,28 +25,92 @@ for arg in "$@"; do
     esac
 done
 
-LINKER="/system/bin/linker64"
-ARCH="$(uname -m)"
-if [ "$ARCH" != "aarch64" ] && [ "$ARCH" != "x86_64" ]; then
-    LINKER="/system/bin/linker"
+# Locate crest-chroot binary
+CREST_CHROOT=""
+if [ -n "$CREST_CHROOT_BIN" ] && [ -x "$CREST_CHROOT_BIN" ]; then
+    CREST_CHROOT="$CREST_CHROOT_BIN"
+elif [ -n "$CREST_CHROOT_BIN" ] && [ -f "$CREST_CHROOT_BIN" ]; then
+    CREST_CHROOT="$CREST_CHROOT_BIN"
+elif [ -f "$NATIVE_DIR/libcrest-chroot.so" ]; then
+    CREST_CHROOT="$NATIVE_DIR/libcrest-chroot.so"
+elif [ -f "$PREFIX/libcrest-chroot.so" ]; then
+    CREST_CHROOT="$PREFIX/libcrest-chroot.so"
 fi
 
-case "$PROOT" in
-    /data/app/*)
-        PROOT_EXEC="$PROOT"
-        ;;
-    *)
-        if [ -x "$LINKER" ]; then
-            PROOT_EXEC="$LINKER $PROOT"
-        else
-            PROOT_EXEC="$PROOT"
-        fi
-        ;;
-esac
+if [ -z "$CREST_CHROOT" ]; then
+    echo "[CrestEditor] Fatal: crest-chroot binary not found in $NATIVE_DIR or $PREFIX" >&2
+    exit 1
+fi
+
+chmod 755 "$CREST_CHROOT" 2>/dev/null || true
+
+CHROOT_ARGS="-u -l"
+
+# Bind host system mounts if they exist
+for system_mnt in /apex /odm /product /system /system_ext /vendor /linkerconfig/ld.config.txt; do
+    if [ -e "$system_mnt" ]; then
+        resolved=$(readlink -f "$system_mnt" 2>/dev/null || echo "$system_mnt")
+        CHROOT_ARGS="$CHROOT_ARGS -b ${resolved}:${system_mnt}"
+    fi
+done
+
+# Bind storage paths if they exist
+if [ -d "/storage/emulated/0" ]; then
+    CHROOT_ARGS="$CHROOT_ARGS -b /storage/emulated/0:/sdcard -b /storage/emulated/0:/storage/emulated/0"
+elif [ -e "/sdcard" ]; then
+    CHROOT_ARGS="$CHROOT_ARGS -b /sdcard:/sdcard"
+fi
+if [ -d "/storage" ]; then
+    CHROOT_ARGS="$CHROOT_ARGS -b /storage:/storage"
+fi
+
+# Bind app paths
+if [ -d "$PREFIX" ]; then
+    CHROOT_ARGS="$CHROOT_ARGS -b $PREFIX:$PREFIX -b $PREFIX:/files"
+    CHROOT_ARGS="$CHROOT_ARGS -b $PREFIX/public:/public -b $PREFIX/public:/home -b $PREFIX/public:/root"
+fi
+if [ -n "$NATIVE_DIR" ] && [ -d "$NATIVE_DIR" ]; then
+    CHROOT_ARGS="$CHROOT_ARGS -b $NATIVE_DIR:$NATIVE_DIR"
+fi
+if [ -d "$ROOTFS_DIR/tmp/shm" ]; then
+    CHROOT_ARGS="$CHROOT_ARGS -b $ROOTFS_DIR/tmp/shm:/dev/shm"
+fi
+
+# Determine guest work directory
+CWD_TARGET="/public"
+if [ -n "$INITIAL_CWD" ] && [ -d "$INITIAL_CWD" ]; then
+    case "$INITIAL_CWD" in
+        /storage/emulated/0*)
+            CWD_TARGET="${INITIAL_CWD#/storage/emulated/0}"
+            CWD_TARGET="/sdcard$CWD_TARGET"
+            ;;
+        *)
+            CWD_TARGET="$INITIAL_CWD"
+            ;;
+    esac
+fi
+CHROOT_ARGS="$CHROOT_ARGS -w $CWD_TARGET"
+
+# Pass guest environment variables
+CHROOT_ARGS="$CHROOT_ARGS -E PREFIX=$PREFIX"
+CHROOT_ARGS="$CHROOT_ARGS -E HOME=/public"
+CHROOT_ARGS="$CHROOT_ARGS -E TERM=${TERM:-xterm-256color}"
+CHROOT_ARGS="$CHROOT_ARGS -E COLORTERM=${COLORTERM:-truecolor}"
+CHROOT_ARGS="$CHROOT_ARGS -E TMPDIR=/tmp"
+CHROOT_ARGS="$CHROOT_ARGS -E PATH=/usr/local/bin:/usr/local/sbin:/bin:/sbin:/usr/bin:/usr/sbin:/system/bin"
+if [ -n "$ANDROID_TZ" ]; then
+    CHROOT_ARGS="$CHROOT_ARGS -E ANDROID_TZ=$ANDROID_TZ"
+fi
+if [ -n "$CREST_BRIDGE_PORT" ]; then
+    CHROOT_ARGS="$CHROOT_ARGS -E CREST_BRIDGE_PORT=$CREST_BRIDGE_PORT"
+fi
+if [ -n "$PREFERRED_SHELL" ]; then
+    CHROOT_ARGS="$CHROOT_ARGS -E PREFERRED_SHELL=$PREFERRED_SHELL"
+fi
 
 if [ "$FAILSAFE" = true ] && [ "$INSTALLING" != true ]; then
-    echo "$$" > "$PREFIX/pid"
-    exec $PROOT_EXEC $ARGS /bin/sh
+    echo "$$" > "$PREFIX/pid" 2>/dev/null || true
+    exec "$CREST_CHROOT" $CHROOT_ARGS "$ROOTFS_DIR" /bin/sh
 else
-    exec $PROOT_EXEC $ARGS /bin/sh "$PREFIX/init-alpine.sh" "$@"
+    exec "$CREST_CHROOT" $CHROOT_ARGS "$ROOTFS_DIR" /bin/sh "$PREFIX/init-alpine.sh" "$@"
 fi
