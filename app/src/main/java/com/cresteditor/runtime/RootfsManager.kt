@@ -727,6 +727,14 @@ class RootfsManager(private val context: Context) {
         val publicDir = File(filesDir, "public")
         if (!publicDir.exists()) publicDir.mkdirs()
 
+        val tmpDir = File(filesDir, "tmp")
+        if (!tmpDir.exists()) {
+            tmpDir.mkdirs()
+        }
+        tmpDir.setReadable(true, true)
+        tmpDir.setWritable(true, true)
+        tmpDir.setExecutable(true, true)
+
         val workingDir = if (!initialPath.isNullOrBlank() && File(initialPath).exists()) {
             File(initialPath)
         } else {
@@ -749,6 +757,7 @@ class RootfsManager(private val context: Context) {
             "NATIVE_DIR=$nativeDir",
             "HOME=/public",
             "TERM=xterm-256color",
+            "TMPDIR=$filesPath/tmp",
             "CREST_CHROOT_BIN=$crestChrootBin",
             "LD_LIBRARY_PATH=$filesPath:$nativeDir",
             "INITIAL_CWD=${normalizePath(workingDir.absolutePath)}",
@@ -875,6 +884,7 @@ class RootfsManager(private val context: Context) {
         val env = pb.environment()
         env["PREFIX"] = filesPath
         env["NATIVE_DIR"] = nativeDir
+        env["TMPDIR"] = "$filesPath/tmp"
         env["HOME"] = "/root"
         env["TERM"] = "xterm-256color"
         return pb

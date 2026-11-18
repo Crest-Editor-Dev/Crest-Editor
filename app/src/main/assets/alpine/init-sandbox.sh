@@ -7,6 +7,8 @@ if [ ! -d "$ROOTFS_DIR" ] && [ -d "$PREFIX/alpine" ]; then
 fi
 
 mkdir -p "$PREFIX/tmp"
+chmod 700 "$PREFIX/tmp" 2>/dev/null || true
+export TMPDIR="$PREFIX/tmp"
 mkdir -p "$ROOTFS_DIR/tmp"
 mkdir -p "$ROOTFS_DIR/tmp/shm"
 mkdir -p "$PREFIX/public"
