@@ -5,8 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cresteditor.icons.Codicons
 import com.cresteditor.ui.theme.*
 
 @Composable
@@ -40,8 +39,7 @@ fun CrestTopBar(
 
         // =====================================================================
         // 1. LEFT CONTROLS (Independently aligned to far left)
-        // Hamburger Menu + Back navigation + Forward navigation
-        // Matches VS Code spacing from reference screenshot
+        // Uses official VS Code Codicons: Menu, ArrowLeft, ArrowRight
         // =====================================================================
         Row(
             modifier = Modifier.align(Alignment.CenterStart),
@@ -52,10 +50,10 @@ fun CrestTopBar(
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Menu,
+                    imageVector = Codicons.Menu,
                     contentDescription = "Open File Explorer",
                     tint = CrestTextPrimary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
@@ -67,10 +65,10 @@ fun CrestTopBar(
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
+                    imageVector = Codicons.ArrowLeft,
                     contentDescription = "Navigate Back",
                     tint = CrestTextPrimary,
-                    modifier = Modifier.size(19.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
@@ -82,10 +80,10 @@ fun CrestTopBar(
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.ArrowForward,
+                    imageVector = Codicons.ArrowRight,
                     contentDescription = "Navigate Forward",
                     tint = CrestTextPrimary.copy(alpha = 0.75f),
-                    modifier = Modifier.size(19.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -93,9 +91,7 @@ fun CrestTopBar(
         // =====================================================================
         // 2. CENTER: Mathematically Centered Command Center Search Bar
         // - Positioned at Alignment.Center relative to toolbar's full width
-        // - Position does NOT depend on left or right controls
-        // - Ratio ~44% of toolbar width, capped between 140dp and 520dp
-        // - Bounded dynamically so it never collides on small screens
+        // - Uses Codicons.Search and Codicons.ChevronDown
         // =====================================================================
         val maxAvailableCenterWidth = (totalWidth - 240.dp).coerceAtLeast(110.dp)
         val searchWidth = (totalWidth * 0.44f).coerceIn(140.dp, 520.dp).coerceAtMost(maxAvailableCenterWidth)
@@ -119,7 +115,7 @@ fun CrestTopBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Default.Search,
+                imageVector = Codicons.Search,
                 contentDescription = "Search",
                 tint = Color(0xFF9D9D9D),
                 modifier = Modifier.size(14.dp)
@@ -140,16 +136,16 @@ fun CrestTopBar(
             Spacer(modifier = Modifier.width(4.dp))
 
             Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
+                imageVector = Codicons.ChevronDown,
                 contentDescription = null,
                 tint = Color(0xFF9D9D9D),
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(15.dp)
             )
         }
 
         // =====================================================================
         // 3. RIGHT CONTROLS (Independently aligned to far right)
-        // Three-dot overflow menu for actions (Save, Settings, etc.)
+        // Three-dot overflow menu using Codicons.KebabVertical
         // =====================================================================
         Box(
             modifier = Modifier.align(Alignment.CenterEnd)
@@ -161,10 +157,10 @@ fun CrestTopBar(
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.MoreVert,
+                    imageVector = Codicons.KebabVertical,
                     contentDescription = "More Actions",
                     tint = CrestTextPrimary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
@@ -177,7 +173,7 @@ fun CrestTopBar(
                     text = { Text("Save", color = CrestTextPrimary, fontSize = 13.sp) },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Default.Save,
+                            imageVector = Codicons.Save,
                             contentDescription = null,
                             tint = CrestTextPrimary,
                             modifier = Modifier.size(16.dp)
@@ -193,7 +189,7 @@ fun CrestTopBar(
                     text = { Text("Settings", color = CrestTextPrimary, fontSize = 13.sp) },
                     leadingIcon = {
                         Icon(
-                            imageVector = Icons.Default.Settings,
+                            imageVector = Codicons.SettingsGear,
                             contentDescription = null,
                             tint = CrestTextPrimary,
                             modifier = Modifier.size(16.dp)
