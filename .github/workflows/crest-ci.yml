@@ -90,7 +90,7 @@ jobs:
           retention-days: 30
 
       - name: Send APK to Telegram
-        if: success() && secrets.BOT_TOKEN != ''
+        if: success()
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
@@ -98,6 +98,10 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
           BRANCH: ${{ github.ref_name }}
         run: |
+          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
+            echo "[-] BOT_TOKEN or CHAT_ID not set, skipping Telegram upload."
+            exit 0
+          fi
           pip3 install python-telegram-bot
           export COMMIT_MSG="$(git log -1 --pretty=format:"%s")"
           python3 scripts/telegram_upload.py app/build/outputs/apk/release/app-release.apk
