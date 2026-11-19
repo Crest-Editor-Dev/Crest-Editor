@@ -90,27 +90,17 @@ jobs:
           retention-days: 30
 
       - name: Send APK to Telegram
-        if: success() && env.BOT_TOKEN != ''
+        if: success() && secrets.BOT_TOKEN != ''
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
         run: |
-          set -euo pipefail
-          APK_PATH="app/build/outputs/apk/release/app-release.apk"
-          test -f "$APK_PATH"
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          
-          CAPTION="<b>Crest Editor Build #${{ github.run_number }}</b>%0A"
-          CAPTION+="<b>Branch:</b> ${{ github.ref_name }}%0A"
-          CAPTION+=" <b>Commit:</b> <code>${COMMIT_MSG}</code>%0A%0A"
-          CAPTION+="<a href='${RUN_URL}'>Workflow Run</a>"
-
-          curl -s -f -F chat_id="${CHAT_ID}" \
-               -F document=@"${APK_PATH}" \
-               -F parse_mode="HTML" \
-               -F caption="${CAPTION}" \
-               "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument"
+          pip3 install python-telegram-bot
+          export COMMIT_MSG="$(git log -1 --pretty=format:"%s")"
+          python3 scripts/telegram_upload.py app/build/outputs/apk/release/app-release.apk
 
       - name: Cleanup Signing Key
         if: always()
