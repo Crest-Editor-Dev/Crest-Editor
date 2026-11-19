@@ -88,23 +88,6 @@ Crest-Editor/
 ├── LICENSE
 └── gradle.properties
 ```
-
-## Configuration Reference
-
-The project uses a `settings.json`-style configuration layer for editor behavior and runtime preferences.
-
-| Setting key | Type | Default | Description |
-| --- | --- | --- | --- |
-| `files.autoSave` | `string` | `afterDelay` | Save mode for dirty files |
-| `files.autoSaveDelay` | `number` | `1000` | Delay before auto-save in milliseconds |
-| `files.showHiddenFiles` | `boolean` | `false` | Show dotfiles in workspace view |
-| `editor.fontSize` | `number` | `14` | Editor font size |
-| `editor.tabSize` | `number` | `4` | Number of spaces per tab |
-| `editor.wordWrap` | `string` | `on` | Word wrap mode |
-| `editor.minimap.enabled` | `boolean` | `false` | Toggle minimap |
-| `editor.theme` | `string` | `vs-dark` | Editor color theme |
-| `terminal.integrated.fontSize` | `number` | `13` | Terminal font size |
-
 ## Requirements
 
 - Android SDK with compile support for SDK 34

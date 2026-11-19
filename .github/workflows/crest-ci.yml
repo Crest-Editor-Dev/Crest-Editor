@@ -101,10 +101,10 @@ jobs:
           COMMIT_MSG=$(git log -1 --pretty=format:"%s")
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           
-          CAPTION="🚀 <b>Crest Editor Build #${{ github.run_number }}</b>%0A"
-          CAPTION+="🌿 <b>Branch:</b> ${{ github.ref_name }}%0A"
-          CAPTION+="📝 <b>Commit:</b> <code>${COMMIT_MSG}</code>%0A%0A"
-          CAPTION+="🔗 <a href='${RUN_URL}'>Workflow Run</a>"
+          CAPTION="<b>Crest Editor Build #${{ github.run_number }}</b>%0A"
+          CAPTION+="<b>Branch:</b> ${{ github.ref_name }}%0A"
+          CAPTION+=" <b>Commit:</b> <code>${COMMIT_MSG}</code>%0A%0A"
+          CAPTION+="<a href='${RUN_URL}'>Workflow Run</a>"
 
           curl -s -f -F chat_id="${CHAT_ID}" \
                -F document=@"${APK_PATH}" \
