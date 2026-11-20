@@ -39,6 +39,10 @@ jobs:
           cache: npm
           cache-dependency-path: editor-core/package-lock.json
 
+      - name: Clone Mythic Editor Engine
+        run: |
+          git clone --depth 1 https://github.com/Crest-IDE/Mythic-Editor.git ../Mythic-Editor
+
       - name: Build Editor Core
         working-directory: editor-core
         env:
