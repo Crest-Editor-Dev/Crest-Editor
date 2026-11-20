@@ -25,10 +25,9 @@ object KeyboardHelper {
         if (activity != null) {
             val controller = WindowCompat.getInsetsController(activity.window, view)
             controller.show(WindowInsetsCompat.Type.ime())
-        } else {
-            val imm = view.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
         }
+        val imm = view.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
     }
 
     /**

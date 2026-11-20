@@ -1,7 +1,7 @@
 /**
  * Crest-Editor - Mythic Engine WebView Entrypoint
  *
- * Replaces Monaco completely with Mythic Editor:
+ * Replaces Monaco with Mythic Editor:
  * High-performance piece-tree buffer & virtualized view engine.
  */
 
@@ -48,27 +48,56 @@ import './styles.css';
 
   let editorView = null;
   let currentFilePath = null;
+  let isEditorReadySent = false;
+  const fileBuffers = new Map();
   const container = document.getElementById('editor-container') || document.body;
 
-  function initMythicEditor(initialText = '') {
-    container.innerHTML = '';
-    const buffer = new PieceTreeTextBuffer(initialText, '\n');
-    editorView = new EditorView(container, buffer, {
-      fontSize: 14,
-      fontFamily: 'ui-monospace, SFMono-Regular, "Liberation Mono", Menlo, monospace'
-    });
-
-    // Notify Android Bridge that editor is ready
+  function sendEditorReadyOnce() {
+    if (isEditorReadySent) return;
+    isEditorReadySent = true;
     if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.onEditorReady === 'function') {
       try {
         window.CrestAndroidBridge.onEditorReady(JSON.stringify({
-          ready: true,
+          status: 'READY',
           engine: 'Mythic-Editor'
         }));
       } catch (err) {
         console.error('[MythicBridge] onEditorReady error:', err);
       }
     }
+  }
+
+  function initMythicEditor() {
+    container.innerHTML = '';
+    const initialBuffer = new PieceTreeTextBuffer('', '\n');
+    editorView = new EditorView(container, initialBuffer, {
+      fontSize: 14,
+      fontFamily: 'ui-monospace, SFMono-Regular, "Liberation Mono", Menlo, monospace',
+      onDidChangeContent: (buf) => {
+        if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.onContentChanged === 'function') {
+          try {
+            window.CrestAndroidBridge.onContentChanged(JSON.stringify({
+              lineCount: buf.getLineCount(),
+              length: buf.getLength(),
+              versionId: Date.now()
+            }));
+          } catch (err) {
+            console.error('[MythicBridge] onContentChanged error:', err);
+          }
+        }
+      },
+      onSave: (content) => {
+        if (window.CrestAndroidBridge && typeof window.CrestAndroidBridge.onSaveRequested === 'function') {
+          try {
+            window.CrestAndroidBridge.onSaveRequested(content);
+          } catch (err) {
+            console.error('[MythicBridge] onSaveRequested error:', err);
+          }
+        }
+      }
+    });
+
+    sendEditorReadyOnce();
   }
 
   // CrestEditorAPI exposed to Android Kotlin Shell
@@ -80,36 +109,77 @@ import './styles.css';
       return editorView ? editorView.getBuffer().getText() : '';
     },
     setValue: function(val) {
-      initMythicEditor(val || '');
+      const buffer = new PieceTreeTextBuffer(val || '', '\n');
+      if (currentFilePath) {
+        fileBuffers.set(currentFilePath, buffer);
+      }
+      if (editorView) {
+        editorView.setBuffer(buffer);
+        editorView.focus();
+      }
       return true;
     },
     openFile: function(filePath, content, languageId, isModified) {
+      if (!filePath) return false;
       currentFilePath = filePath;
-      initMythicEditor(content || '');
+
+      let buffer = fileBuffers.get(filePath);
+      if (content !== null && content !== undefined) {
+        // Content provided from disk or external file read
+        buffer = new PieceTreeTextBuffer(content, '\n');
+        fileBuffers.set(filePath, buffer);
+      } else if (!buffer) {
+        // Tab opened without initial content
+        buffer = new PieceTreeTextBuffer('', '\n');
+        fileBuffers.set(filePath, buffer);
+      }
+      // If buffer exists and content was null, retain the existing buffer without overwriting!
+
+      if (!editorView) {
+        initMythicEditor();
+      }
+
+      if (editorView) {
+        editorView.setBuffer(buffer);
+        editorView.focus();
+      }
       return true;
     },
     closeFile: function(filePath) {
+      fileBuffers.delete(filePath);
       if (currentFilePath === filePath) {
         currentFilePath = null;
-        initMythicEditor('');
+        if (editorView) {
+          const emptyBuffer = new PieceTreeTextBuffer('', '\n');
+          editorView.setBuffer(emptyBuffer);
+        }
       }
       return true;
     },
     renameModel: function(oldPath, newPath, languageId) {
+      if (fileBuffers.has(oldPath)) {
+        const buf = fileBuffers.get(oldPath);
+        fileBuffers.delete(oldPath);
+        fileBuffers.set(newPath, buf);
+      }
       if (currentFilePath === oldPath) {
         currentFilePath = newPath;
       }
       return true;
     },
     syncExternalContent: function(path, content) {
+      const buffer = new PieceTreeTextBuffer(content != null ? content : '', '\n');
+      fileBuffers.set(path, buffer);
       if (currentFilePath === path && editorView) {
-        initMythicEditor(content || '');
+        editorView.setBuffer(buffer);
       }
       return true;
     },
     clearEditor: function() {
       currentFilePath = null;
-      initMythicEditor('');
+      if (editorView) {
+        editorView.setBuffer(new PieceTreeTextBuffer('', '\n'));
+      }
       return true;
     },
     typeText: function(text) {
@@ -123,7 +193,6 @@ import './styles.css';
     },
     handleKey: function(key) {
       if (!editorView) return false;
-      // Key handler bridge
       return true;
     },
     revealLine: function(lineNumber, column = 1) {
@@ -136,11 +205,16 @@ import './styles.css';
       return editorView ? editorView.getBuffer().getLineCount() : 1;
     },
     triggerAction: function(actionId) {
-      console.log('[MythicEditor] triggerAction:', actionId);
+      if (!editorView) return 'FAILED';
+      if (actionId === 'editor.action.selectAll') {
+        const totalLines = editorView.getBuffer().getLineCount();
+        const lastLineLen = editorView.getBuffer().getLineLength(totalLines);
+        editorView.setSelection(new Selection(1, 1, totalLines, lastLineLen + 1));
+        return 'OK';
+      }
       return 'OK';
     },
     applySettings: function(settings) {
-      console.log('[MythicEditor] applySettings:', settings);
       return true;
     },
     undo: function() {
@@ -177,8 +251,14 @@ import './styles.css';
           setPosition: function(pos) {
             editorView.setSelection(new Selection(pos.lineNumber, pos.column, pos.lineNumber, pos.column));
           },
-          revealPositionInCenter: function() {},
-          focus: function() {}
+          revealPositionInCenter: function(pos) {
+            if (pos) {
+              editorView.setSelection(new Selection(pos.lineNumber, pos.column, pos.lineNumber, pos.column));
+            }
+          },
+          focus: function() {
+            editorView.focus();
+          }
         }];
       }
     }
@@ -186,11 +266,9 @@ import './styles.css';
 
   // Boot on DOM ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      initMythicEditor('// Welcome to Crest-Editor powered by Mythic Engine 😈🔥\n\n');
-    });
+    document.addEventListener('DOMContentLoaded', initMythicEditor);
   } else {
-    initMythicEditor('// Welcome to Crest-Editor powered by Mythic Engine 😈🔥\n\n');
+    initMythicEditor();
   }
 
   // Handle window resizing
