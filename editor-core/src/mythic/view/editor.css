@@ -1,0 +1,133 @@
+/* Mythic Editor View Styling */
+
+.mythic-editor {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #121417;
+  color: #f3f4f6;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  line-height: 1;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.mythic-scroll-container {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  position: relative;
+  will-change: scroll-position;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mythic-canvas {
+  position: relative;
+  width: 100%;
+  min-width: 100%;
+}
+
+/* Gutter & Line Numbers */
+.mythic-gutter {
+  position: sticky;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background-color: #1a1d23;
+  border-right: 1px solid #2e3440;
+  z-index: 10;
+  pointer-events: none;
+  user-select: none;
+}
+
+.mythic-line-number {
+  position: absolute;
+  left: 0;
+  right: 0;
+  text-align: right;
+  padding-right: 12px;
+  color: #6b7280;
+  font-size: 12px;
+  user-select: none;
+  transition: color 0.1s;
+}
+
+.mythic-line-number.active {
+  color: #c7d2fe;
+  font-weight: 600;
+}
+
+/* Lines Layer */
+.mythic-lines-content {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  user-select: text;
+}
+
+.mythic-view-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  white-space: pre;
+  tab-size: 4;
+}
+
+/* Selection Layer */
+.mythic-selection-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.mythic-selection-rect {
+  position: absolute;
+  background-color: rgba(99, 102, 241, 0.35);
+  border-radius: 2px;
+}
+
+/* Caret Cursor */
+.mythic-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  background-color: #818cf8;
+  pointer-events: none;
+  z-index: 5;
+  will-change: transform;
+}
+
+.mythic-cursor.blink {
+  animation: mythic-blink 1s step-end infinite;
+}
+
+@keyframes mythic-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Hidden Textarea for Input / Gboard */
+.mythic-inputarea {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  outline: none;
+  resize: none;
+  z-index: 1;
+}

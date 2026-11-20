@@ -7,8 +7,8 @@ export default defineConfig({
   resolve: {
     alias: {
       'vs': resolve(__dirname, 'src/core/vs'),
-      '@mythic': resolve(__dirname, '../../Mythic-Editor/src'),
-      'mythic-editor': resolve(__dirname, '../../Mythic-Editor/src')
+      '@mythic': resolve(__dirname, 'src/mythic'),
+      'mythic-editor': resolve(__dirname, 'src/mythic')
     }
   },
   server: {
