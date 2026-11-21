@@ -1,4 +1,4 @@
-# Crest-Editor
+# Crest-IDE
 
 A high-performance Android code editor built with Jetpack Compose and a desktop-grade editor engine, designed for mobile developers who want a VS Code-like workflow on Android.
 
@@ -10,7 +10,7 @@ A high-performance Android code editor built with Jetpack Compose and a desktop-
 
 ## Overview
 
-Crest-Editor brings the feel of a desktop IDE to Android devices. It combines a touch-optimized Monaco editor, a Linux-based development environment, and a native Compose interface to provide a fast, flexible, and familiar coding experience for mobile development.
+Crest-IDE brings the feel of a desktop IDE to Android devices. It combines a touch-optimized Monaco editor, a Linux-based development environment, and a native Compose interface to provide a fast, flexible, and familiar coding experience for mobile development.
 
 This project aims to make coding on Android feel less like a compromise and more like a proper workspace: multi-tab editing, terminal access, filesystem tools, settings management, and developer workflows that work well on smaller screens.
 
@@ -31,13 +31,7 @@ This project aims to make coding on Android feel less like a compromise and more
 ### Android-native experience
 - Jetpack Compose UI designed for mobile workflows
 - Multi-tab workspace layout
-- Settings screen inspired by VS Code preferences
 - Auto-save and dirty state tracking for editing reliability
-
-### VS Code-style configuration
-- JSON-based settings management
-- Reactive configuration updates
-- A familiar editor experience for users coming from desktop IDEs
 
 ## Architecture
 
